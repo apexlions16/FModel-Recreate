@@ -1,0 +1,102 @@
+name: FModel-Recreate Release
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - FModel/FModel.csproj
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version without the v prefix (for example 0.2.0)
+        required: false
+        type: string
+      prerelease:
+        description: Publish as a prerelease
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve and validate version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content .\FModel\FModel.csproj
+          $projectVersion = [string]($project.Project.PropertyGroup.Version | Select-Object -First 1)
+          $requested = '${{ inputs.version }}'
+          $version = if ([string]::IsNullOrWhiteSpace($requested)) { $projectVersion } else { $requested }
+          if ($version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') { throw "Invalid semantic version: $version" }
+          $numericVersion = $version.Split('-')[0] + '.0'
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "numeric_version=$numericVersion" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check for an existing release
+        id: existing
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view '${{ steps.version.outputs.tag }}' --repo '${{ github.repository }}' *> $null
+          if ($LASTEXITCODE -eq 0) {
+            "exists=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "exists=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+      - name: Restore
+        if: steps.existing.outputs.exists != 'true'
+        run: dotnet restore .\FModel\FModel.slnx -r win-x64
+
+      - name: Build
+        if: steps.existing.outputs.exists != 'true'
+        run: dotnet build .\FModel\FModel.slnx -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true
+
+      - name: Publish
+        if: steps.existing.outputs.exists != 'true'
+        run: dotnet publish .\FModel\FModel.csproj -c Release --no-restore --no-self-contained -r win-x64 -f net10.0-windows -o .\artifacts\publish -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:Version=${{ steps.version.outputs.version }} -p:FileVersion=${{ steps.version.outputs.numeric_version }} -p:AssemblyVersion=${{ steps.version.outputs.numeric_version }}
+
+      - name: Package and checksum
+        if: steps.existing.outputs.exists != 'true'
+        shell: pwsh
+        run: |
+          $name = 'FModel-Recreate-${{ steps.version.outputs.version }}-win-x64'
+          Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath ".\artifacts\$name.zip" -Force
+          (Get-FileHash ".\artifacts\$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Set-Content ".\artifacts\$name.sha256"
+
+      - name: Create GitHub release
+        if: steps.existing.outputs.exists != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: FModel-Recreate ${{ steps.version.outputs.tag }}
+          target_commitish: dev
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease || false }}
+          make_latest: true
+          files: |
+            artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.zip
+            artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.sha256
