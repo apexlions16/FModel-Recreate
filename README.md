@@ -9,14 +9,17 @@ FModel-Recreate is a Windows Unreal Engine archive explorer and the foundation f
 - Search packages and inspect references.
 - Preview and export textures, audio, meshes, animations, materials and package data.
 - Use English or Turkish interface localization.
-- Receive updates from this repository's own GitHub Releases channel.
+- Receive stable application updates from this repository's owner-approved GitHub Releases channel.
 
 ## Release channels
 
-- **Stable:** semantic-versioned releases such as `v0.1.1`.
-- **QA:** a rolling prerelease built from the latest successful `dev` commit.
+- **Stable (`vX.Y.Z`):** owner-approved main releases. They can only be started manually by the `apexlions16` GitHub account.
+- **Automated upstream (`upstream-vX.Y.Z`):** prereleases created only after a safe, verified integration from `4sval/FModel:dev`. They never replace the stable latest release.
+- **QA (`qa`):** a rolling prerelease built from the latest successful `dev` commit.
 
-Every release includes a Windows x64 ZIP and a SHA-256 checksum file. The packaged executable is self-contained; users do not need to install .NET separately.
+An automated upstream prerelease can later be promoted to the stable channel by the repository owner through **Actions → Promote Upstream Release**. Promotion retains the exact verified ZIP bytes and publishes standard stable asset names.
+
+Every release includes a Windows x64 ZIP and a SHA-256 checksum file. The packaged executable is self-contained; users do not need to install .NET separately. See `RELEASE_CHANNELS.md` for the publication and promotion rules.
 
 ## Startup diagnostics
 
