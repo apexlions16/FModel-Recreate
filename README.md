@@ -29,8 +29,8 @@ Requirements:
 ```powershell
 git clone --recursive https://github.com/apexlions16/FModel-Recreate.git
 cd FModel-Recreate
-dotnet restore .\FModel\FModel.slnx -r win-x64
-dotnet build .\FModel\FModel.slnx -c Release -r win-x64 --no-restore
+dotnet restore .\FModel\FModel.csproj -r win-x64
+dotnet build .\FModel\FModel.csproj -c Release -r win-x64 --no-restore
 ```
 
 ## Attribution and license
