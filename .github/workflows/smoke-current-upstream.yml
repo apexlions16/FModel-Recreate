@@ -35,9 +35,7 @@ jobs:
           echo "MergeBase=$MERGE_BASE"
           echo "ChangedFiles=$(wc -l < current-upstream-files.txt)"
 
-          pwsh -NoProfile -File ./tools/upstream-sync/Get-UpstreamRisk.ps1 `
-            -ChangedFilesPath current-upstream-files.txt `
-            -ReportPath current-upstream-risk.md
+          pwsh -NoProfile -File ./tools/upstream-sync/Get-UpstreamRisk.ps1 -ChangedFilesPath current-upstream-files.txt -ReportPath current-upstream-risk.md
           cat current-upstream-risk.md
 
           set +e
