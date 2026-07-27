@@ -72,7 +72,7 @@ if ($ReportPath) {
     if ($protectedMatches.Count -gt 0) {
         [void] $report.Add('')
         [void] $report.Add('## Protected paths touched')
-        foreach ($match in $protectedMatches) { [void] $report.Add("- `$match`") }
+        foreach ($match in $protectedMatches) { [void] $report.Add(('- `{0}`' -f $match)) }
     }
 
     $reportDirectory = Split-Path -Parent $ReportPath
