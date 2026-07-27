@@ -1,0 +1,52 @@
+name: Verify v0.2.1 Release
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - '.github/workflows/verify-v0.2.1-release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-release:
+    runs-on: windows-latest
+    steps:
+      - name: Verify release metadata and assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release = gh release view v0.2.1 --repo '${{ github.repository }}' --json tagName,isDraft,isPrerelease,targetCommitish,assets | ConvertFrom-Json
+          if ($release.tagName -ne 'v0.2.1') { throw 'v0.2.1 release was not found.' }
+          if ($release.isDraft) { throw 'v0.2.1 is still a draft.' }
+
+          $assetNames = @($release.assets | ForEach-Object name)
+          $zipName = 'FModel-Recreate-0.2.1-win-x64.zip'
+          $checksumName = 'FModel-Recreate-0.2.1-win-x64.sha256'
+          if ($zipName -notin $assetNames) { throw "$zipName is missing from the release." }
+          if ($checksumName -notin $assetNames) { throw "$checksumName is missing from the release." }
+
+          New-Item -ItemType Directory -Path release-assets -Force | Out-Null
+          gh release download v0.2.1 --repo '${{ github.repository }}' --pattern $zipName --pattern $checksumName --dir release-assets
+
+          Push-Location release-assets
+          $checksumLine = (Get-Content $checksumName -Raw).Trim()
+          $expected = ($checksumLine -split '\s+')[0].ToLowerInvariant()
+          $actual = (Get-FileHash $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "SHA-256 mismatch. Expected $expected, got $actual." }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zipName))
+          try {
+            $entry = $archive.Entries | Where-Object FullName -eq 'FModel-Recreate.exe'
+            if ($null -eq $entry -or $entry.Length -le 0) { throw 'FModel-Recreate.exe is missing or empty inside the ZIP.' }
+            "Verified release asset: $zipName"
+            "Executable bytes: $($entry.Length)"
+            "SHA-256: $actual"
+          }
+          finally {
+            $archive.Dispose()
+          }
+          Pop-Location
