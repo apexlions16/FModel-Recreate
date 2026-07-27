@@ -3,7 +3,7 @@ name: Bootstrap foundation and rebrand
 on:
   push:
     branches:
-      - agent/foundation-rebrand
+      - dev
 
 permissions:
   contents: write
@@ -13,10 +13,10 @@ jobs:
     if: contains(github.event.head_commit.message, '[bootstrap-foundation]')
     runs-on: windows-latest
     steps:
-      - name: Checkout branch with submodules
+      - name: Checkout dev with submodules
         uses: actions/checkout@v6
         with:
-          ref: agent/foundation-rebrand
+          ref: dev
           submodules: recursive
           fetch-depth: 0
 
