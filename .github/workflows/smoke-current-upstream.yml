@@ -29,31 +29,48 @@ jobs:
           git fetch upstream dev --tags --prune
 
           UPSTREAM_SHA=$(git rev-parse upstream/dev)
-          MERGE_BASE=$(git merge-base HEAD upstream/dev)
-          git diff --name-only "$MERGE_BASE..$UPSTREAM_SHA" > current-upstream-files.txt
-          echo "UpstreamSHA=$UPSTREAM_SHA"
-          echo "MergeBase=$MERGE_BASE"
-          echo "ChangedFiles=$(wc -l < current-upstream-files.txt)"
+          FORK_SHA=$(git rev-parse HEAD)
+          : > current-upstream-conflicts.txt
+
+          if MERGE_BASE=$(git merge-base HEAD upstream/dev); then
+            HISTORY_RELATED=true
+            git diff --name-only "$MERGE_BASE..$UPSTREAM_SHA" > current-upstream-files.txt
+          else
+            HISTORY_RELATED=false
+            MERGE_BASE='none'
+            git diff --name-only HEAD upstream/dev > current-upstream-files.txt
+          fi
+
+          {
+            echo "ForkSHA=$FORK_SHA"
+            echo "UpstreamSHA=$UPSTREAM_SHA"
+            echo "HistoryRelated=$HISTORY_RELATED"
+            echo "MergeBase=$MERGE_BASE"
+            echo "ChangedFiles=$(wc -l < current-upstream-files.txt)"
+          } | tee current-upstream-status.txt
 
           pwsh -NoProfile -File ./tools/upstream-sync/Get-UpstreamRisk.ps1 -ChangedFilesPath current-upstream-files.txt -ReportPath current-upstream-risk.md
           cat current-upstream-risk.md
 
-          set +e
-          git merge --no-ff --no-commit upstream/dev
-          MERGE_EXIT=$?
-          set -e
+          if [[ "$HISTORY_RELATED" == 'true' ]]; then
+            set +e
+            git merge --no-ff --no-commit upstream/dev
+            MERGE_EXIT=$?
+            set -e
 
-          if [[ $MERGE_EXIT -ne 0 ]]; then
-            git diff --name-only --diff-filter=U > current-upstream-conflicts.txt
-            echo "ConflictCount=$(wc -l < current-upstream-conflicts.txt)"
-            echo 'Conflicts:'
-            cat current-upstream-conflicts.txt
-            git merge --abort
+            if [[ $MERGE_EXIT -ne 0 ]]; then
+              git diff --name-only --diff-filter=U > current-upstream-conflicts.txt
+              echo "ConflictCount=$(wc -l < current-upstream-conflicts.txt)" | tee -a current-upstream-status.txt
+              cat current-upstream-conflicts.txt
+              git merge --abort
+            else
+              echo 'ConflictCount=0' | tee -a current-upstream-status.txt
+              pwsh -NoProfile -File ./tools/upstream-sync/Assert-RecreateInvariants.ps1
+              git reset --hard HEAD
+            fi
           else
-            : > current-upstream-conflicts.txt
-            echo 'ConflictCount=0'
-            pwsh -NoProfile -File ./tools/upstream-sync/Assert-RecreateInvariants.ps1
-            git reset --hard HEAD
+            echo 'ConflictCount=not-attempted-unrelated-histories' | tee -a current-upstream-status.txt
+            echo 'Automatic merge must use an explicit upstream baseline because the repositories have no common Git ancestor.'
           fi
 
       - name: Upload dry-run report
@@ -61,6 +78,7 @@ jobs:
         with:
           name: current-upstream-smoke-${{ github.sha }}
           path: |
+            current-upstream-status.txt
             current-upstream-files.txt
             current-upstream-risk.md
             current-upstream-conflicts.txt
