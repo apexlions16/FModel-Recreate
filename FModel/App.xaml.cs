@@ -39,16 +39,18 @@ public partial class App
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+        var runtimeVerification = Array.Exists(e.Args, argument =>
+            string.Equals(argument, "--verify-runtime", StringComparison.OrdinalIgnoreCase));
+
         try
         {
             UserSettings.Default = SettingsStorage.Load();
             LocalizationManager.Initialize();
 
-            if (Array.Exists(e.Args, argument =>
-                    string.Equals(argument, "--verify-runtime", StringComparison.OrdinalIgnoreCase)))
+            if (runtimeVerification)
             {
                 VerifyRuntimeBundle();
-                Shutdown(0);
+                Environment.Exit(0);
                 return;
             }
 
@@ -80,6 +82,13 @@ public partial class App
         catch (Exception exception)
         {
             WriteStartupFailure(exception);
+
+            if (runtimeVerification)
+            {
+                Environment.Exit(-1);
+                return;
+            }
+
             System.Windows.MessageBox.Show(
                 $"FModel-Recreate could not start.\n\n{exception.GetBaseException().GetType().Name}: {exception.GetBaseException().Message}\n\n" +
                 $"A diagnostic log was written to:\n{AppPaths.StartupCrashLog}",
@@ -94,7 +103,8 @@ public partial class App
     {
         Directory.CreateDirectory(AppPaths.AppDataDirectory);
         _ = Current.FindResource("BoolToVisibilityConverter");
-        _ = new FirstRunWizard();
+        _ = typeof(FirstRunWizard).Assembly.GetName().Name;
+        _ = new System.Windows.Controls.TextBlock { Text = Constants.APP_NAME };
         File.WriteAllText(AppPaths.RuntimeVerificationMarker, DateTimeOffset.UtcNow.ToString("O"));
     }
 
