@@ -45,7 +45,26 @@ jobs:
         run: dotnet list .\FModel\FModel.csproj package --vulnerable --include-transitive
 
       - name: Build
-        run: dotnet build .\FModel\FModel.slnx -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          dotnet build .\FModel\FModel.slnx -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload compiler diagnostics
+        if: steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiler-diagnostics-${{ github.sha }}
+          path: build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop after compiler failure
+        if: steps.build.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Compilation failed. Download the compiler-diagnostics artifact for the complete build log.'
 
       - name: Publish QA executable
         if: github.event_name != 'pull_request'
