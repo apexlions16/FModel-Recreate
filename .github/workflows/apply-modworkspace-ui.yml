@@ -21,35 +21,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Verify exact archive file list
+      - name: Decode and validate archive
         shell: bash
         run: |
           set -euo pipefail
           CHUNK_COUNT=$(find .automation/modworkspace-ui -maxdepth 1 -type f -name 'chunk-*' | wc -l)
           [[ "$CHUNK_COUNT" -eq 1 ]]
           cat .automation/modworkspace-ui/chunk-* | base64 -d > /tmp/modworkspace-ui.tar.gz
-          tar -tzf /tmp/modworkspace-ui.tar.gz | sort > /tmp/actual-files.txt
-          cat > /tmp/expected-files.txt <<'FILES'
-          FModel/App.xaml.cs
-          FModel/AppPaths.cs
-          FModel/Localization/LocalizationCatalog.cs
-          FModel/MainWindow.xaml
-          FModel/Services/ApplicationService.cs
-          FModel/Services/ModWorkspaceService.cs
-          FModel/ViewModels/Commands/MenuCommand.cs
-          FModel/ViewModels/Commands/RightClickMenuCommand.cs
-          FModel/ViewModels/ModWorkspaceViewModel.cs
-          FModel/Views/LocResEditor.xaml
-          FModel/Views/LocResEditor.xaml.cs
-          FModel/Views/ModWorkspace.xaml
-          FModel/Views/ModWorkspace.xaml.cs
-          FModel/Views/Resources/Controls/ContextMenus/FileContextMenu.xaml
-          FModel/Views/TextPromptDialog.xaml
-          FModel/Views/TextPromptDialog.xaml.cs
-          MOD_WORKSPACE.md
-          README.md
-          FILES
-          diff -u /tmp/expected-files.txt /tmp/actual-files.txt
+          tar -tzf /tmp/modworkspace-ui.tar.gz > /tmp/archive-files.txt
+          [[ -s /tmp/archive-files.txt ]]
 
       - name: Extract and verify every source file
         shell: bash
@@ -78,6 +58,29 @@ jobs:
           HASHES
           sha256sum -c /tmp/expected-sha256.txt
           rm -rf .automation/modworkspace-ui
+
+          cat > /tmp/expected-changes.txt <<'FILES'
+          FModel/App.xaml.cs
+          FModel/AppPaths.cs
+          FModel/Localization/LocalizationCatalog.cs
+          FModel/MainWindow.xaml
+          FModel/Services/ApplicationService.cs
+          FModel/Services/ModWorkspaceService.cs
+          FModel/ViewModels/Commands/MenuCommand.cs
+          FModel/ViewModels/Commands/RightClickMenuCommand.cs
+          FModel/ViewModels/ModWorkspaceViewModel.cs
+          FModel/Views/LocResEditor.xaml
+          FModel/Views/LocResEditor.xaml.cs
+          FModel/Views/ModWorkspace.xaml
+          FModel/Views/ModWorkspace.xaml.cs
+          FModel/Views/Resources/Controls/ContextMenus/FileContextMenu.xaml
+          FModel/Views/TextPromptDialog.xaml
+          FModel/Views/TextPromptDialog.xaml.cs
+          MOD_WORKSPACE.md
+          README.md
+          FILES
+          git status --porcelain=v1 --untracked-files=all | sed -E 's/^.. //' | grep -v '^\.github/workflows/apply-modworkspace-ui.yml$' | sort > /tmp/actual-changes.txt
+          diff -u /tmp/expected-changes.txt /tmp/actual-changes.txt
 
       - name: Commit and push actual UI source
         shell: bash
