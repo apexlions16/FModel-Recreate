@@ -9,9 +9,16 @@ namespace FModel.ViewModels;
 
 public class ApiEndpointViewModel
 {
+    private const string DefaultImGuiSettings = """
+[Window][Debug##Default]
+Pos=60,60
+Size=400,400
+Collapsed=0
+""";
+
     private readonly RestClient _client = new (new RestClientOptions
     {
-        UserAgent = $"FModel/{Constants.APP_VERSION}",
+        UserAgent = $"FModel-Recreate/{Constants.APP_VERSION}",
         Timeout = TimeSpan.FromSeconds(5)
     }, configureSerialization: s => s.UseSerializer<JsonNetSerializer>());
 
@@ -36,6 +43,19 @@ public class ApiEndpointViewModel
 
     public async Task DownloadFileAsync(string fileLink, string installationPath)
     {
+        var parentDirectory = Path.GetDirectoryName(installationPath);
+        if (!string.IsNullOrEmpty(parentDirectory))
+            Directory.CreateDirectory(parentDirectory);
+
+        // The viewer layout is an application default, not remote data. Keeping it
+        // local removes the obsolete cdn.fmodel.app dependency and provides a valid
+        // layout even during the first offline launch.
+        if (string.Equals(Path.GetFileName(installationPath), "imgui.ini", StringComparison.OrdinalIgnoreCase))
+        {
+            await File.WriteAllTextAsync(installationPath, DefaultImGuiSettings);
+            return;
+        }
+
         var request = new FRestRequest(fileLink);
         var data = _client.DownloadData(request) ?? Array.Empty<byte>();
         await File.WriteAllBytesAsync(installationPath, data);
