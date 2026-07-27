@@ -1,0 +1,150 @@
+name: Promote Upstream Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: Automated upstream prerelease tag to promote, for example upstream-v0.2.2
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authorize stable promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_ACTOR" != 'apexlions16' ]]; then
+            echo 'Only the repository owner, apexlions16, may promote an automated upstream release to stable.' >&2
+            exit 1
+          fi
+
+      - name: Checkout repository history
+        uses: actions/checkout@v6
+        with:
+          ref: dev
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate source prerelease
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$SOURCE_TAG" =~ ^upstream-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Invalid automated upstream tag: $SOURCE_TAG" >&2
+            exit 1
+          fi
+
+          VERSION="${BASH_REMATCH[1]}"
+          STABLE_TAG="v$VERSION"
+          SOURCE_ASSET="FModel-Recreate-upstream-$VERSION-win-x64"
+          STABLE_ASSET="FModel-Recreate-$VERSION-win-x64"
+
+          gh release view "$SOURCE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets > source-release.json
+          jq -e --arg tag "$SOURCE_TAG" --arg zip "$SOURCE_ASSET.zip" --arg sum "$SOURCE_ASSET.sha256" '
+            .tagName == $tag and
+            .isDraft == false and
+            .isPrerelease == true and
+            ([.assets[].name] | index($zip)) != null and
+            ([.assets[].name] | index($sum)) != null
+          ' source-release.json > /dev/null
+
+          if gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Stable release $STABLE_TAG already exists." >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin "refs/tags/$SOURCE_TAG:refs/tags/$SOURCE_TAG"
+          SOURCE_COMMIT=$(git rev-list -n 1 "$SOURCE_TAG")
+          if [[ -z "$SOURCE_COMMIT" ]]; then
+            echo "Could not resolve the source commit for $SOURCE_TAG." >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_tag=$SOURCE_TAG" >> "$GITHUB_OUTPUT"
+          echo "stable_tag=$STABLE_TAG" >> "$GITHUB_OUTPUT"
+          echo "source_asset=$SOURCE_ASSET" >> "$GITHUB_OUTPUT"
+          echo "stable_asset=$STABLE_ASSET" >> "$GITHUB_OUTPUT"
+          echo "source_commit=$SOURCE_COMMIT" >> "$GITHUB_OUTPUT"
+
+      - name: Download and verify automated upstream assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ steps.source.outputs.source_tag }}
+          SOURCE_ASSET: ${{ steps.source.outputs.source_asset }}
+          STABLE_ASSET: ${{ steps.source.outputs.stable_asset }}
+        run: |
+          set -euo pipefail
+          mkdir promoted-assets
+          gh release download "$SOURCE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$SOURCE_ASSET.zip" --pattern "$SOURCE_ASSET.sha256" --dir promoted-assets
+
+          cd promoted-assets
+          sha256sum -c "$SOURCE_ASSET.sha256"
+          unzip -t "$SOURCE_ASSET.zip"
+          unzip -l "$SOURCE_ASSET.zip" | grep -q 'FModel-Recreate.exe'
+
+          cp "$SOURCE_ASSET.zip" "$STABLE_ASSET.zip"
+          sha256sum "$STABLE_ASSET.zip" > "$STABLE_ASSET.sha256"
+
+      - name: Create owner-approved stable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.source.outputs.version }}
+          SOURCE_TAG: ${{ steps.source.outputs.source_tag }}
+          STABLE_TAG: ${{ steps.source.outputs.stable_tag }}
+          STABLE_ASSET: ${{ steps.source.outputs.stable_asset }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          gh release create "$STABLE_TAG" \
+            "promoted-assets/$STABLE_ASSET.zip" \
+            "promoted-assets/$STABLE_ASSET.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_COMMIT" \
+            --title "FModel-Recreate $STABLE_TAG" \
+            --latest \
+            --notes "Owner-approved stable promotion of automated upstream prerelease $SOURCE_TAG. The exact verified ZIP bytes were retained; only the stable asset name and checksum filename were created for the main channel."
+
+      - name: Verify promoted stable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STABLE_TAG: ${{ steps.source.outputs.stable_tag }}
+          STABLE_ASSET: ${{ steps.source.outputs.stable_asset }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.source_commit }}
+        run: |
+          set -euo pipefail
+          gh release view "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets > stable-release.json
+          jq -e --arg tag "$STABLE_TAG" --arg zip "$STABLE_ASSET.zip" --arg sum "$STABLE_ASSET.sha256" '
+            .tagName == $tag and
+            .isDraft == false and
+            .isPrerelease == false and
+            ([.assets[].name] | index($zip)) != null and
+            ([.assets[].name] | index($sum)) != null
+          ' stable-release.json > /dev/null
+
+          mkdir stable-verification
+          gh release download "$STABLE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$STABLE_ASSET.zip" --pattern "$STABLE_ASSET.sha256" --dir stable-verification
+          cd stable-verification
+          sha256sum -c "$STABLE_ASSET.sha256"
+          unzip -t "$STABLE_ASSET.zip"
+          unzip -l "$STABLE_ASSET.zip" | grep -q 'FModel-Recreate.exe'
+
+          echo "Promoted ${{ steps.source.outputs.source_tag }} to $STABLE_TAG at commit $SOURCE_COMMIT." >> "$GITHUB_STEP_SUMMARY"

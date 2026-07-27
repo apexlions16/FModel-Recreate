@@ -1,40 +1,36 @@
-name: FModel-Recreate Stable Release
+name: FModel-Recreate Automated Upstream Release
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       version:
-        description: Semantic version without the v prefix; leave empty to use Directory.Build.props
-        required: false
+        description: Semantic version without the v prefix
+        required: true
         type: string
       ref:
-        description: Git ref to build for the stable release
-        required: false
-        default: dev
+        description: Verified Git ref to package
+        required: true
+        type: string
+      upstream_sha:
+        description: Source upstream FModel commit
+        required: true
         type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: stable-release
+  group: upstream-release-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
   release:
     runs-on: windows-latest
     steps:
-      - name: Authorize stable publication
-        shell: pwsh
-        run: |
-          if ('${{ github.actor }}' -ne 'apexlions16') {
-            throw 'Stable releases may only be published by the repository owner, apexlions16.'
-          }
-
-      - name: Checkout with submodules
+      - name: Checkout verified integration with submodules
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref || 'dev' }}
+          ref: ${{ inputs.ref }}
           submodules: recursive
           fetch-depth: 0
 
@@ -43,21 +39,26 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Resolve and validate version
+      - name: Resolve automated channel identity
         id: version
         shell: pwsh
         run: |
+          $version = '${{ inputs.version }}'
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid upstream release version: $version" }
+
           [xml]$build = Get-Content .\Directory.Build.props
           $projectVersion = [string]($build.Project.PropertyGroup.FModelRecreateVersion | Select-Object -First 1)
-          $requested = '${{ inputs.version }}'
-          $version = if ([string]::IsNullOrWhiteSpace($requested)) { $projectVersion } else { $requested }
-          if ($version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') { throw "Invalid semantic version: $version" }
-          $numericVersion = $version.Split('-')[0] + '.0'
+          if ($projectVersion -ne $version) {
+            throw "The verified integration declares $projectVersion but the workflow requested $version."
+          }
+
+          $numericVersion = "$version.0"
           "version=$version" >> $env:GITHUB_OUTPUT
           "numeric_version=$numericVersion" >> $env:GITHUB_OUTPUT
-          "tag=v$version" >> $env:GITHUB_OUTPUT
+          "tag=upstream-v$version" >> $env:GITHUB_OUTPUT
+          "asset=FModel-Recreate-upstream-$version-win-x64" >> $env:GITHUB_OUTPUT
 
-      - name: Check for an existing stable release
+      - name: Check for an existing automated upstream release
         id: existing
         shell: pwsh
         env:
@@ -97,7 +98,7 @@ jobs:
         if: steps.existing.outputs.exists != 'true'
         shell: pwsh
         run: |
-          $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Stable-Verification'
+          $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Automated-Upstream-Verification'
           Remove-Item $verificationRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
 
@@ -109,38 +110,40 @@ jobs:
           $process = Start-Process .\artifacts\publish\FModel-Recreate.exe -ArgumentList '--verify-runtime' -PassThru
           if (!$process.WaitForExit(30000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            throw 'Stable executable did not finish runtime verification within 30 seconds.'
+            throw 'Automated upstream executable did not finish runtime verification within 30 seconds.'
           }
 
           if ($process.ExitCode -ne 0) {
             if (Test-Path $startupLog) { Get-Content $startupLog }
-            throw "Stable executable failed runtime verification with exit code $($process.ExitCode)."
+            throw "Automated upstream executable failed runtime verification with exit code $($process.ExitCode)."
           }
 
           if (!(Test-Path $marker)) { throw 'Runtime verification marker was not created.' }
 
-      - name: Package and checksum
+      - name: Package automated upstream build and checksum
         if: steps.existing.outputs.exists != 'true'
         shell: pwsh
         run: |
-          $name = 'FModel-Recreate-${{ steps.version.outputs.version }}-win-x64'
+          $name = '${{ steps.version.outputs.asset }}'
           Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath ".\artifacts\$name.zip" -Force
           (Get-FileHash ".\artifacts\$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Set-Content ".\artifacts\$name.sha256"
 
-      - name: Create stable GitHub release
+      - name: Create automated upstream prerelease
         if: steps.existing.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: FModel-Recreate ${{ steps.version.outputs.tag }}
-          target_commitish: ${{ inputs.ref || 'dev' }}
+          name: FModel-Recreate Automated Upstream v${{ steps.version.outputs.version }}
+          target_commitish: ${{ inputs.ref }}
           generate_release_notes: true
-          prerelease: false
-          make_latest: true
+          prerelease: true
+          make_latest: false
           body: |
-            Owner-authorized stable Windows x64 release. A separate .NET installation is not required.
+            **Automated upstream-update channel — not a stable release.**
 
-            This release was started manually by `apexlions16`. The published executable passed dependency audit, build, and Windows runtime verification before publication.
+            This build contains the verified integration of upstream FModel commit `${{ inputs.upstream_sha }}`. It passed protected-path policy checks, invariant checks, dependency audit, Windows build, self-contained publish, and packaged runtime verification.
+
+            Stable `vX.Y.Z` releases are never created by this workflow. The repository owner may later promote this exact prerelease through **Actions → Promote Upstream Release**.
           files: |
-            artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.zip
-            artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.sha256
+            artifacts/${{ steps.version.outputs.asset }}.zip
+            artifacts/${{ steps.version.outputs.asset }}.sha256
