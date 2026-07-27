@@ -27,6 +27,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           : > current-upstream-status.txt
+          : > current-upstream-fetch.txt
           : > current-upstream-files.txt
           : > current-upstream-risk.md
           : > current-upstream-conflicts.txt
@@ -35,7 +36,14 @@ jobs:
           git config user.name 'fmodel-recreate-smoke-test'
           git config user.email 'actions@users.noreply.github.com'
           git remote add upstream https://github.com/4sval/FModel.git
-          git fetch upstream dev --tags --prune
+
+          set +e
+          git fetch upstream dev --tags --prune > current-upstream-fetch.txt 2>&1
+          FETCH_EXIT=$?
+          set -e
+          cat current-upstream-fetch.txt
+          echo "FetchExit=$FETCH_EXIT" >> current-upstream-status.txt
+          if [[ $FETCH_EXIT -ne 0 ]]; then exit $FETCH_EXIT; fi
 
           UPSTREAM_SHA=$(git rev-parse upstream/dev)
           FORK_SHA=$(git rev-parse HEAD)
@@ -55,7 +63,7 @@ jobs:
             echo "HistoryRelated=$HISTORY_RELATED"
             echo "MergeBase=$MERGE_BASE"
             echo "ChangedFiles=$(wc -l < current-upstream-files.txt)"
-          } | tee current-upstream-status.txt
+          } | tee -a current-upstream-status.txt
 
           pwsh -NoProfile -File ./tools/upstream-sync/Get-UpstreamRisk.ps1 -ChangedFilesPath current-upstream-files.txt -ReportPath current-upstream-risk.md
           cat current-upstream-risk.md
@@ -88,6 +96,7 @@ jobs:
           name: current-upstream-smoke-${{ github.sha }}
           path: |
             current-upstream-status.txt
+            current-upstream-fetch.txt
             current-upstream-files.txt
             current-upstream-risk.md
             current-upstream-conflicts.txt
