@@ -1,0 +1,38 @@
+name: Apply Mod Tools Payload
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - '.automation/modtools-payload/**'
+      - '.github/workflows/apply-modtools-payload.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'agent/ue4-mod-workspace-core' && github.actor == 'apexlions16'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout payload branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Decode, apply, and commit source payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .automation/modtools-payload/chunk-* | base64 -d > /tmp/modtools-payload.tar.gz
+          tar -tzf /tmp/modtools-payload.tar.gz > /tmp/modtools-payload-files.txt
+          tar -xzf /tmp/modtools-payload.tar.gz -C .
+          rm -rf .automation/modtools-payload
+          rm .github/workflows/apply-modtools-payload.yml
+
+          git config user.name 'fmodel-recreate-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: add tested UE4 mod tools core'
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
