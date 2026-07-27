@@ -1,4 +1,4 @@
-name: Export Source For Mod Workspace
+name: Inspect Repak CLI
 
 on:
   pull_request:
@@ -10,25 +10,52 @@ permissions:
   contents: read
 
 jobs:
-  export:
+  inspect:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout full source with submodules
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          submodules: recursive
-          persist-credentials: false
-
-      - name: Remove Git metadata
+      - name: Download official repak v0.2.3
         shell: bash
-        run: find . -type d -name .git -prune -exec rm -rf {} +
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 -o repak.tar.xz https://github.com/trumank/repak/releases/download/v0.2.3/repak_cli-x86_64-unknown-linux-gnu.tar.xz
+          tar -xf repak.tar.xz
+          chmod +x repak
 
-      - name: Upload source tree
+      - name: Capture command help
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./repak --version | tee repak-version.txt
+          ./repak --help | tee repak-help.txt
+          ./repak pack --help | tee repak-pack-help.txt
+          ./repak list --help | tee repak-list-help.txt
+          ./repak info --help | tee repak-info-help.txt
+
+      - name: Synthetic pack/list/unpack smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input/Game/Content/Test
+          printf 'FModel-Recreate repak smoke test\n' > input/Game/Content/Test/Smoke.txt
+          ./repak pack input smoke_P.pak
+          ./repak info smoke_P.pak | tee repak-info-output.txt
+          ./repak list smoke_P.pak | tee repak-list-output.txt
+          mkdir unpacked
+          ./repak unpack smoke_P.pak --output unpacked
+          cmp input/Game/Content/Test/Smoke.txt unpacked/Game/Content/Test/Smoke.txt
+
+      - name: Upload inspection report
         uses: actions/upload-artifact@v4
         with:
-          name: fmodel-recreate-source-${{ github.sha }}
-          path: .
-          include-hidden-files: true
+          name: repak-cli-inspection-${{ github.sha }}
+          path: |
+            repak-version.txt
+            repak-help.txt
+            repak-pack-help.txt
+            repak-list-help.txt
+            repak-info-help.txt
+            repak-info-output.txt
+            repak-list-output.txt
+            smoke_P.pak
           if-no-files-found: error
           retention-days: 1
