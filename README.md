@@ -1,33 +1,42 @@
-FModel - An Unreal Engine Archives Explorer in C#
-------------------------------------------
+# FModel-Recreate
 
-[![CI Status](https://img.shields.io/github/actions/workflow/status/4sval/FModel/qa.yml?label=CI)](https://github.com/4sval/FModel/actions)
-[![Latest](https://img.shields.io/github/v/release/4sval/FModel?color=yellow)](https://fmodel.app/download)
-[![Donate](https://img.shields.io/badge/sponsor-DB61A2?logo=GitHub-Sponsors&logoColor=white)](https://fmodel.app/donate)
-[![Discord](https://discord.com/api/guilds/637265123144237061/widget.png?style=shield)](https://fmodel.app/discord)
-***
+FModel-Recreate is a Windows Unreal Engine archive explorer and the foundation for a future modding workspace. It is derived from the GPL-3.0 licensed [FModel](https://github.com/4sval/FModel) project and uses [CUE4Parse](https://github.com/FabianFG/CUE4Parse) for UE4 and UE5 package parsing.
 
-### Description:
-FModel is an archive explorer for [Unreal Engine](https://www.unrealengine.com/en-US/) games that uses [CUE4Parse](https://github.com/FabianFG/CUE4Parse) as its core parsing library, providing robust support for the latest UE4 and UE5 archive formats. It aims to deliver a modern and intuitive user interface, powerful features, and a comprehensive set of tools for previewing and converting game packages, empowering YOU to understand games' inner workings with ease.
+## Current capabilities
 
-FModel is actively maintained and developed by a dedicated community of contributors, and welcomes all new contributions and feedback.
+- Browse Unreal Engine PAK and IoStore archives supported by CUE4Parse.
+- Supply static and dynamic AES keys.
+- Search packages and inspect references.
+- Preview and export textures, audio, meshes, animations, materials and package data.
+- Use English or Turkish interface localization.
+- Receive updates from this repository's own GitHub Releases channel.
 
-### Installation:
-For installation, follow the instructions from [here](https://github.com/4sval/FModel/wiki/Installing-FModel)
+## Release channels
 
-### Sponsorship:
-<p>
-  <a href="https://www.jetbrains.com/">
-    <img src="https://cdn.fmodel.app/i/svg/jetbrains.svg" width="256px">
-  </a>
-  <a href="https://1password.com/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://cdn.fmodel.app/i/svg/1password-light.svg">
-      <source media="(prefers-color-scheme: light)" srcset="https://cdn.fmodel.app/i/svg/1password-dark.svg">
-      <img src="https://cdn.fmodel.app/i/svg/1password-light.svg" width="256px">
-    </picture>
-  </a>
-</p>
+- **Stable:** semantic-versioned releases such as `v0.1.0`.
+- **QA:** a rolling prerelease built from the latest successful `dev` commit.
 
-### License:
-FModel is licensed under [GPL-3](https://github.com/4sval/FModel/blob/dev/LICENSE), and licenses of third-party libraries used are listed [here](https://github.com/4sval/FModel/blob/dev/NOTICE).
+Every release includes a Windows x64 ZIP and a SHA-256 checksum file.
+
+## Building
+
+Requirements:
+
+- Windows
+- .NET 10 SDK
+- Git with submodule support
+
+```powershell
+git clone --recursive https://github.com/apexlions16/FModel-Recreate.git
+cd FModel-Recreate
+dotnet restore .\FModel\FModel.csproj -r win-x64
+dotnet build .\FModel\FModel.csproj -c Release -r win-x64 --no-restore
+```
+
+## Attribution and license
+
+FModel-Recreate remains licensed under GPL-3.0. The original FModel copyright, license and third-party notices are preserved in `LICENSE` and `NOTICE`. This repository is an independent derivative and is not the official FModel distribution.
+
+## Support
+
+Use this repository's Discussions and Releases pages for project-specific support and downloads.

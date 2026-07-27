@@ -1,65 +1,89 @@
-name: FModel QA Builder
+name: FModel-Recreate QA
 
 on:
   push:
-    branches: [ dev ]
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
-      - name: GIT Checkout
+      - name: Checkout with submodules
         uses: actions/checkout@v6
         with:
-          submodules: 'recursive'
-
-      - name: .NET 10 Setup
+          submodules: recursive
+          fetch-depth: 0
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
-
-      - name: .NET Restore
-        run: dotnet restore "./FModel/FModel.slnx" -r win-x64
-
-      - name: .NET Publish
-        run: dotnet publish "./FModel/FModel.csproj" -c Release --no-restore --no-self-contained -r win-x64 -f net10.0-windows -o "./FModel/bin/Publish/" -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:DebugType=None -p:GenerateDocumentationFile=false -p:DebugSymbols=false
-
-      - name: ZIP File
-        uses: thedoctor0/zip-release@0.7.6
+          dotnet-version: 10.0.x
+      - name: Verify submodules
+        shell: pwsh
+        run: |
+          git submodule status --recursive
+          if ((git submodule status --recursive) -match '^[-+]') { throw 'Invalid submodule state.' }
+      - name: Restore
+        run: dotnet restore .\FModel\FModel.csproj -r win-x64
+      - name: Audit NuGet dependencies
+        shell: pwsh
+        run: dotnet list .\FModel\FModel.csproj package --vulnerable --include-transitive
+      - name: Build
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          dotnet build .\FModel\FModel.csproj -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload compiler diagnostics
+        if: steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
         with:
-          type: zip
-          filename: ${{ github.sha }}.zip # will end up in working directory not the Publish folder
-          path: ./FModel/bin/Publish/FModel.exe
-
-      - name: Edit QA Artifact
-        uses: ncipollo/release-action@v1.20.0
+          name: compiler-diagnostics-${{ github.sha }}
+          path: build.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Stop after compiler failure
+        if: steps.build.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Compilation failed.'
+      - name: Publish QA executable
+        if: github.event_name != 'pull_request'
+        run: dotnet publish .\FModel\FModel.csproj -c Release --no-restore --no-self-contained -r win-x64 -f net10.0-windows -o .\artifacts\publish -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:InformationalVersion=0.1.0-qa+${{ github.sha }}
+      - name: Package QA build
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
+          Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath .\artifacts\FModel-Recreate-QA-${{ github.sha }}.zip -Force
+          (Get-FileHash .\artifacts\FModel-Recreate-QA-${{ github.sha }}.zip -Algorithm SHA256).Hash.ToLower() + '  FModel-Recreate-QA-${{ github.sha }}.zip' | Set-Content .\artifacts\FModel-Recreate-QA-${{ github.sha }}.sha256
+      - name: Upload QA artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: 'FModel QA Testing'
-          body: 'Dev builds'
-          tag: 'qa'
-          artifacts: ${{ github.sha }}.zip
+          name: FModel-Recreate-QA-${{ github.sha }}
+          path: |
+            artifacts/FModel-Recreate-QA-${{ github.sha }}.zip
+            artifacts/FModel-Recreate-QA-${{ github.sha }}.sha256
+          if-no-files-found: error
+      - name: Update rolling QA release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: qa
+          name: FModel-Recreate QA
+          body: Rolling test build from `${{ github.sha }}`.
           prerelease: true
-          allowUpdates: true
-
-      - name: Get Version
-        id: package_version
-        uses: kzrnm/get-net-sdk-project-versions-action@v2
-        with:
-          proj-path: ./FModel/FModel.csproj
-
-      - name: FModel Auth
-        id: fmodel_auth
-        uses: fjogeleit/http-request-action@v1.16.6
-        with:
-          url: "https://api.fmodel.app/v1/oauth/token"
-          data: '{"username": "${{ secrets.API_USERNAME }}", "password": "${{ secrets.API_PASSWORD }}"}'
-
-      - name: FModel Deploy Build
-        uses: fjogeleit/http-request-action@v1.16.6
-        with:
-          url: "https://api.fmodel.app/v1/infos/${{ secrets.QA_ID }}"
-          method: "PATCH"
-          bearerToken: ${{ fromJson(steps.fmodel_auth.outputs.response).accessToken }}
-          data: '{"version": "${{ steps.package_version.outputs.version }}-dev+${{ github.sha }}", "downloadUrl": "https://github.com/4sval/FModel/releases/download/qa/${{ github.sha }}.zip"}'
+          make_latest: false
+          files: |
+            artifacts/FModel-Recreate-QA-${{ github.sha }}.zip
+            artifacts/FModel-Recreate-QA-${{ github.sha }}.sha256

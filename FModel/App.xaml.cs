@@ -8,10 +8,10 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
 using CUE4Parse;
-using FModel.Framework;
+using FModel.Localization;
 using FModel.Services;
 using FModel.Settings;
-using Newtonsoft.Json;
+using FModel.Views;
 using Serilog.Sinks.SystemConsole.Themes;
 using MessageBox = AdonisUI.Controls.MessageBox;
 using MessageBoxImage = AdonisUI.Controls.MessageBoxImage;
@@ -38,15 +38,10 @@ public partial class App
 #endif
         base.OnStartup(e);
 
-        try
-        {
-            UserSettings.Default = JsonConvert.DeserializeObject<UserSettings>(
-                File.ReadAllText(UserSettings.FilePath), JsonNetSerializer.SerializerSettings);
-        }
-        catch
-        {
-            UserSettings.Default = new UserSettings();
-        }
+        UserSettings.Default = SettingsStorage.Load();
+        LocalizationManager.Initialize();
+        if (!File.Exists(AppPaths.FirstRunMarker))
+            new FirstRunWizard().ShowDialog();
 
         var createMe = false;
         if (!Directory.Exists(UserSettings.Default.OutputDirectory))
@@ -57,14 +52,15 @@ public partial class App
                 var outputDir = Directory.CreateDirectory(Path.Combine(currentDir, "Output"));
                 using (File.Create(Path.Combine(outputDir.FullName, Path.GetRandomFileName()), 1, FileOptions.DeleteOnClose))
                 {
-
                 }
 
                 UserSettings.Default.OutputDirectory = outputDir.FullName;
             }
             catch (UnauthorizedAccessException exception)
             {
-                throw new Exception("FModel cannot create the output directory where it is currently located. Please move FModel.exe to a different location.", exception);
+                throw new Exception(
+                    "FModel-Recreate cannot create the output directory where it is currently located. " +
+                    "Please move FModel-Recreate.exe to a different location.", exception);
             }
         }
 
@@ -104,7 +100,7 @@ public partial class App
             UserSettings.Default.ModelDirectory = Path.Combine(UserSettings.Default.OutputDirectory, "Exports");
         }
 
-        Directory.CreateDirectory(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FModel"));
+        Directory.CreateDirectory(AppPaths.AppDataDirectory);
         Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Backups"));
         if (createMe) Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Exports"));
         Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Logs"));
@@ -117,16 +113,16 @@ public partial class App
             .MinimumLevel.Verbose()
             .WriteTo.Console(outputTemplate: template, theme: AnsiConsoleTheme.Literate)
             .WriteTo.File(outputTemplate: template,
-                path: Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Debug-Log-{DateTime.Now:yyyy-MM-dd}.log"))
+                path: Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Recreate-Debug-Log-{DateTime.Now:yyyy-MM-dd}.log"))
 #else
             .Enrich.With<CallerEnricher>()
             .WriteTo.File(outputTemplate: template,
-                path: Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Log-{DateTime.Now:yyyy-MM-dd}.log"))
+                path: Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Recreate-Log-{DateTime.Now:yyyy-MM-dd}.log"))
 #endif
             .CreateLogger();
 
         CacheManager.MigrateLegacyFiles();
-        Log.Information("Version {Version} ({CommitId})", Constants.APP_VERSION, Constants.APP_COMMIT_ID);
+        Log.Information("{Product} version {Version} ({CommitId})", Constants.APP_NAME, Constants.APP_VERSION, Constants.APP_COMMIT_ID);
         Log.Information("{OS}", GetOperatingSystemProductName());
         Log.Information("{RuntimeVer}", RuntimeInformation.FrameworkDescription);
         Log.Information("Culture {SysLang}", CultureInfo.CurrentCulture);
@@ -136,7 +132,7 @@ public partial class App
     {
         Log.Information("––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––");
         Log.CloseAndFlush();
-        UserSettings.Save();
+        SettingsStorage.Save();
         Environment.Exit(0);
     }
 
@@ -146,23 +142,25 @@ public partial class App
 
         var messageBox = new MessageBoxModel
         {
-            Text = $"An unhandled {e.Exception.GetBaseException().GetType()} occurred: {e.Exception.Message}",
-            Caption = "Fatal Error",
+            Text = $"{LocalizationManager.Get("An unexpected error occurred. You can reset settings, restart the application, or ignore the error.")}\n\n" +
+                   $"{e.Exception.GetBaseException().GetType()}: {e.Exception.Message}",
+            Caption = LocalizationManager.Get("Fatal Error"),
             Icon = MessageBoxImage.Error,
             Buttons =
             [
-                MessageBoxButtons.Custom("Reset Settings", EErrorKind.ResetSettings),
-                MessageBoxButtons.Custom("Restart", EErrorKind.Restart),
-                MessageBoxButtons.Custom("OK", EErrorKind.Ignore)
+                MessageBoxButtons.Custom(LocalizationManager.Get("Reset Settings"), EErrorKind.ResetSettings),
+                MessageBoxButtons.Custom(LocalizationManager.Get("Restart"), EErrorKind.Restart),
+                MessageBoxButtons.Custom(LocalizationManager.Get("OK"), EErrorKind.Ignore)
             ],
             IsSoundEnabled = false
         };
 
         MessageBox.Show(messageBox);
-        if (messageBox.Result == MessageBoxResult.Custom && (EErrorKind) messageBox.ButtonPressed.Id != EErrorKind.Ignore)
+        if (messageBox.Result == MessageBoxResult.Custom &&
+            (EErrorKind) messageBox.ButtonPressed.Id != EErrorKind.Ignore)
         {
             if ((EErrorKind) messageBox.ButtonPressed.Id == EErrorKind.ResetSettings)
-                UserSettings.Delete();
+                SettingsStorage.Delete();
 
             ApplicationService.ApplicationView.Restart();
         }

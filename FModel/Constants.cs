@@ -9,10 +9,11 @@ namespace FModel;
 
 public static class Constants
 {
+    public const string APP_NAME = "FModel-Recreate";
     public static readonly string APP_PATH = Path.GetFullPath(Environment.GetCommandLineArgs()[0]);
-    public static readonly string APP_VERSION = FileVersionInfo.GetVersionInfo(APP_PATH).FileVersion;
-    public static readonly string APP_COMMIT_ID = FileVersionInfo.GetVersionInfo(APP_PATH).ProductVersion?.SubstringAfter('+');
-    public static readonly string APP_SHORT_COMMIT_ID = APP_COMMIT_ID[..7];
+    public static readonly string APP_VERSION = FileVersionInfo.GetVersionInfo(APP_PATH).FileVersion ?? "0.0.0.0";
+    public static readonly string APP_COMMIT_ID = FileVersionInfo.GetVersionInfo(APP_PATH).ProductVersion?.SubstringAfter('+') ?? "release";
+    public static readonly string APP_SHORT_COMMIT_ID = APP_COMMIT_ID.Length > 7 ? APP_COMMIT_ID[..7] : APP_COMMIT_ID;
     public static readonly DateTime APP_BUILD_DATE = File.GetLastWriteTime(APP_PATH);
 
     public const string ZERO_64_CHAR = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -26,38 +27,39 @@ public static class Constants
     public const string RED = "#E06C75";
     public const string GREEN = "#98C379";
     public const string YELLOW = "#E5C07B";
-    public const string BLUE = "#528BCC";
+    public const string BLUE = "#7657D5";
 
-    public const string ISSUE_LINK = "https://github.com/4sval/FModel/discussions/categories/q-a";
-    public const string GH_REPO = "https://api.github.com/repos/4sval/FModel";
+    public const string REPOSITORY_URL = "https://github.com/apexlions16/FModel-Recreate";
+    public const string UPSTREAM_REPOSITORY_URL = "https://github.com/4sval/FModel";
+    public const string ISSUE_LINK = REPOSITORY_URL + "/discussions";
+    public const string GH_REPO = "https://api.github.com/repos/apexlions16/FModel-Recreate";
     public const string GH_COMMITS_HISTORY = GH_REPO + "/commits";
     public const string GH_RELEASES = GH_REPO + "/releases";
-    public const string DONATE_LINK = "https://fmodel.app/donate";
-    public const string DISCORD_LINK = "https://fmodel.app/discord";
+    public const string RELEASES_PAGE = REPOSITORY_URL + "/releases";
+    public const string DONATE_LINK = REPOSITORY_URL;
+    public const string DISCORD_LINK = REPOSITORY_URL + "/discussions";
 
     public const string _FN_LIVE_TRIGGER = "fortnite-live.manifest";
     public const string _VAL_LIVE_TRIGGER = "valorant-live.manifest";
-
     public const string _NO_PRESET_TRIGGER = "Hand Made";
 
-    // Common issues
-    public const string MAPPING_ISSUE_LINK = "https://github.com/4sval/FModel/discussions/418";
-    public const string AUDIO_ISSUE_LINK = "https://github.com/4sval/FModel/discussions/658";
-    public const string RADA_ISSUE_LINK = "https://github.com/4sval/FModel/discussions/422";
-    public const string VERSION_ISSUE_LINK = "https://github.com/4sval/FModel/discussions/425";
+    public const string MAPPING_ISSUE_LINK = ISSUE_LINK;
+    public const string AUDIO_ISSUE_LINK = ISSUE_LINK;
+    public const string RADA_ISSUE_LINK = ISSUE_LINK;
+    public const string VERSION_ISSUE_LINK = ISSUE_LINK;
 
     public static int PALETTE_LENGTH => COLOR_PALETTE.Length;
     public static readonly Vector3[] COLOR_PALETTE =
     {
-        new (0.231f, 0.231f, 0.231f), // Dark gray
-        new (0.376f, 0.490f, 0.545f), // Teal
-        new (0.957f, 0.263f, 0.212f), // Red
-        new (0.196f, 0.804f, 0.196f), // Green
-        new (0.957f, 0.647f, 0.212f), // Orange
-        new (0.612f, 0.153f, 0.690f), // Purple
-        new (0.129f, 0.588f, 0.953f), // Blue
-        new (1.000f, 0.920f, 0.424f), // Yellow
-        new (0.824f, 0.412f, 0.118f), // Brown
-        new (0.612f, 0.800f, 0.922f)  // Light blue
+        new (0.231f, 0.231f, 0.231f),
+        new (0.376f, 0.490f, 0.545f),
+        new (0.957f, 0.263f, 0.212f),
+        new (0.196f, 0.804f, 0.196f),
+        new (0.957f, 0.647f, 0.212f),
+        new (0.612f, 0.153f, 0.690f),
+        new (0.129f, 0.588f, 0.953f),
+        new (1.000f, 0.920f, 0.424f),
+        new (0.824f, 0.412f, 0.118f),
+        new (0.612f, 0.800f, 0.922f)
     };
 }

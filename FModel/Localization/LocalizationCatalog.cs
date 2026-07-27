@@ -1,0 +1,103 @@
+using System.Collections.Generic;
+
+namespace FModel.Localization;
+
+internal static class LocalizationCatalog
+{
+    public static IReadOnlyDictionary<string, string> English { get; } = BuildEnglish();
+
+    public static IReadOnlyDictionary<string, string> Turkish { get; } = new Dictionary<string, string>
+    {
+        ["About"] = "Hakkında",
+        ["About FModel"] = "FModel-Recreate Hakkında",
+        ["ADVANCED"] = "GELİŞMİŞ",
+        ["AES"] = "AES",
+        ["All Files (*.*)"] = "Tüm Dosyalar (*.*)",
+        ["Archive Directory *"] = "Arşiv Klasörü *",
+        ["Archive Mount Point"] = "Arşiv Bağlama Noktası",
+        ["Archive Version"] = "Arşiv Sürümü",
+        ["Archives"] = "Arşivler",
+        ["Archives Info"] = "Arşiv Bilgileri",
+        ["Audio Player"] = "Ses Oynatıcı",
+        ["Backup"] = "Yedekle",
+        ["Bring Selected Folder To View"] = "Seçili Klasörü Görünüme Getir",
+        ["Bugs Report"] = "Hata Bildir",
+        ["Cancel"] = "İptal",
+        ["Collapse All"] = "Tümünü Daralt",
+        ["Compressed Audio"] = "Sıkıştırılmış Ses",
+        ["Contributors"] = "Katkıda Bulunanlar",
+        ["Creator"] = "Oluşturucu",
+        ["Description"] = "Açıklama",
+        ["Directory"] = "Klasör",
+        ["Discord Rich Presence"] = "Discord Etkinlik Durumu",
+        ["Discord Server"] = "Discord Sunucusu",
+        ["Donate"] = "Destek Ol",
+        ["English"] = "English",
+        ["Fatal Error"] = "Kritik Hata",
+        ["Favorite Directories"] = "Favori Klasörler",
+        ["Folders"] = "Klasörler",
+        ["GAME"] = "OYUN",
+        ["General"] = "Genel",
+        ["Global Unique Identifier"] = "Genel Benzersiz Kimlik",
+        ["Help"] = "Yardım",
+        ["Image Merger"] = "Görsel Birleştirici",
+        ["Included In Archive"] = "Bulunduğu Arşiv",
+        ["INFORMATION"] = "BİLGİ",
+        ["Interface Language"] = "Arayüz Dili",
+        ["Is Encrypted"] = "Şifreli mi",
+        ["Keep Directory Structure"] = "Klasör Yapısını Koru",
+        ["Keybindings"] = "Kısayollar",
+        ["Load"] = "Yükle",
+        ["Loading Mode"] = "Yükleme Modu",
+        ["Local Mapping File (drag & drop)"] = "Yerel Mapping Dosyası (sürükle ve bırak)",
+        ["Mapping File Path"] = "Mapping Dosyası Yolu",
+        ["Models"] = "Modeller",
+        ["Mount Point"] = "Bağlama Noktası",
+        ["OK"] = "Tamam",
+        ["Output Directory *"] = "Çıktı Klasörü *",
+        ["Packages"] = "Paketler",
+        ["Packages Count"] = "Paket Sayısı",
+        ["Packages Language"] = "Paket Dili",
+        ["Powered by"] = "Altyapı",
+        ["Preview New Explorer System"] = "Yeni Gezgin Sistemini Önizle",
+        ["References"] = "Referanslar",
+        ["Releases"] = "Sürümler",
+        ["Reset Settings"] = "Ayarları Sıfırla",
+        ["Restart"] = "Yeniden Başlat",
+        ["Save Audio Directory *"] = "Ses Kaydetme Klasörü *",
+        ["Save Properties Directory *"] = "Özellik Kaydetme Klasörü *",
+        ["Save Texture Directory *"] = "Doku Kaydetme Klasörü *",
+        ["Search"] = "Ara",
+        ["Select a mapping file"] = "Bir mapping dosyası seçin",
+        ["Selector"] = "Seçici",
+        ["Settings"] = "Ayarlar",
+        ["Start"] = "Başla",
+        ["Themes"] = "Temalar",
+        ["Texture Platform *"] = "Doku Platformu *",
+        ["Turkish"] = "Türkçe",
+        ["UE Versions *"] = "UE Sürümleri *",
+        ["Unknown"] = "Bilinmiyor",
+        ["Unluac"] = "Unluac",
+        ["Views"] = "Görünümler",
+        ["Welcome to FModel-Recreate"] = "FModel-Recreate'a Hoş Geldiniz",
+        ["Yes"] = "Evet",
+        ["No"] = "Hayır",
+        ["3D Viewer"] = "3B Görüntüleyici",
+        ["* May Require a restart for changes to take effect"] = "* Bazı değişikliklerin uygulanması için yeniden başlatma gerekebilir",
+        ["Choose the interface language. The game directory selector will open next."] = "Arayüz dilini seçin. Ardından oyun klasörü seçicisi açılacaktır.",
+        ["FModel-Recreate is an Unreal Engine archive explorer based on FModel and CUE4Parse. This release establishes an independent update channel, branding and localization foundation."] = "FModel-Recreate; FModel ve CUE4Parse tabanlı bir Unreal Engine arşiv gezginidir. Bu sürüm bağımsız güncelleme kanalını, marka kimliğini ve yerelleştirme temelini oluşturur.",
+        ["Built by apexlions16. Based on the GPL-3.0 licensed FModel project by 4sval and its contributors."] = "apexlions16 tarafından geliştirilmektedir. 4sval ve katkıcılarının GPL-3.0 lisanslı FModel projesini temel alır.",
+        ["It looks like you just changed something.\nFModel-Recreate will restart to apply your changes."] = "Bir ayarı değiştirdiniz.\nDeğişiklikleri uygulamak için FModel-Recreate yeniden başlatılacak.",
+        ["A restart is needed"] = "Yeniden başlatma gerekiyor",
+        ["An unexpected error occurred. You can reset settings, restart the application, or ignore the error."] = "Beklenmeyen bir hata oluştu. Ayarları sıfırlayabilir, uygulamayı yeniden başlatabilir veya hatayı yok sayabilirsiniz.",
+        ["A newer FModel-Recreate release is available. Open the GitHub release page?"] = "Daha yeni bir FModel-Recreate sürümü mevcut. GitHub sürüm sayfası açılsın mı?",
+        ["Update available"] = "Güncelleme mevcut"
+    };
+
+    private static IReadOnlyDictionary<string, string> BuildEnglish()
+    {
+        var result = new Dictionary<string, string>();
+        foreach (var key in Turkish.Keys) result[key] = key;
+        return result;
+    }
+}
