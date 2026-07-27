@@ -33,15 +33,20 @@ jobs:
           echo 'ad8681d3d0d1db18819572e57f0f8fd9a9cdb847019f94b32c84c26e501d7e3e  /tmp/modtools-payload.tar.gz' | sha256sum -c -
           tar -tzf /tmp/modtools-payload.tar.gz | tee /tmp/modtools-payload-files.txt
 
-      - name: Extract source payload
+      - name: Extract non-workflow source payload
         shell: bash
         run: |
           set -euo pipefail
+          cp .github/workflows/qa.yml /tmp/original-qa.yml
           tar -xzf /tmp/modtools-payload.tar.gz -C .
+          cp .github/workflows/qa.yml /tmp/modtools-qa.yml
+          cp /tmp/original-qa.yml .github/workflows/qa.yml
+
           test -f FModel.ModTools/FModel.ModTools.csproj
           test -f FModel.ModTools.Tests/FModel.ModTools.Tests.csproj
           test -f FModel.ModTools/LocResCodec.cs
           test -f FModel.ModTools.Tests/BackendTests.cs
+          cmp .github/workflows/qa.yml /tmp/original-qa.yml
           rm -rf .automation/modtools-payload
 
       - name: Commit and push actual source tree
@@ -53,3 +58,11 @@ jobs:
           git add -A
           git commit -m 'feat: add tested UE4 mod tools core'
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
+      - name: Upload deferred QA workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: modtools-qa-workflow-${{ github.sha }}
+          path: /tmp/modtools-qa.yml
+          if-no-files-found: error
+          retention-days: 1
