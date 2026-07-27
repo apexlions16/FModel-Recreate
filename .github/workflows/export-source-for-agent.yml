@@ -1,0 +1,34 @@
+name: Export Source For Mod Workspace
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - '.github/workflows/export-source-for-agent.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full source with submodules
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Remove Git metadata
+        shell: bash
+        run: find . -type d -name .git -prune -exec rm -rf {} +
+
+      - name: Upload source tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: fmodel-recreate-source-${{ github.sha }}
+          path: .
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
