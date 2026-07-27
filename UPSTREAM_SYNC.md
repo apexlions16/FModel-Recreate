@@ -19,6 +19,12 @@ An upstream update is automatically integrated only when all of the following ar
 
 When all gates pass, the workflow opens an integration pull request, merges it, increments the FModel-Recreate patch version, calls the stable release workflow, downloads the resulting ZIP and checksum, verifies SHA-256 and archive integrity, and confirms that the archive contains `FModel-Recreate.exe`.
 
+## Upstream transport isolation
+
+The fork-scoped GitHub token is removed after checkout before contacting the public upstream repository. Only `4sval/FModel:dev` is fetched with `--no-tags`, preventing upstream release tags such as `qa` from colliding with FModel-Recreate's own tags. The workflow authenticates again only immediately before pushing its integration branch back to FModel-Recreate.
+
+Every workflow change also performs a real read-only fetch of the public upstream branch, so credential or tag regressions fail before the synchronization workflow is merged.
+
 ## Manual-review path
 
 The workflow creates a draft pull request and does not publish a release when any protected surface is touched, a conflict occurs, an invariant disappears, a build/runtime check fails, the change set is unusually large, or `dev` changes concurrently.
@@ -45,7 +51,7 @@ The editable policy is stored at `tools/upstream-sync/protected-paths.txt`. It c
 
 ## Versioning
 
-Safe automatic integrations increment only the patch component. For example, `0.2.0` becomes `0.2.1`. Risky/manual integrations do not change the version until a maintainer resolves and approves them.
+Safe automatic integrations increment only the patch component. For example, `0.2.1` becomes `0.2.2`. Risky/manual integrations do not change the version until a maintainer resolves and approves them.
 
 ## Manual execution
 
