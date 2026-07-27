@@ -38,7 +38,7 @@ jobs:
           git remote add upstream https://github.com/4sval/FModel.git
 
           set +e
-          git fetch upstream dev --tags --prune > current-upstream-fetch.txt 2>&1
+          git fetch --no-tags upstream dev --prune > current-upstream-fetch.txt 2>&1
           FETCH_EXIT=$?
           set -e
           cat current-upstream-fetch.txt
