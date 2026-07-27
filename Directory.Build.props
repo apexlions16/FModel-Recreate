@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
     <FModelRecreateVersion>0.1.1</FModelRecreateVersion>
+    <FModelRecreateReleaseRevision>1</FModelRecreateReleaseRevision>
   </PropertyGroup>
 </Project>
