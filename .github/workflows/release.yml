@@ -90,8 +90,12 @@ jobs:
         run: |
           $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Release-Verification'
           Remove-Item $verificationRoot -Recurse -Force -ErrorAction SilentlyContinue
-          $env:APPDATA = Join-Path $verificationRoot 'AppData'
-          New-Item -ItemType Directory -Path $env:APPDATA -Force | Out-Null
+          New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
+
+          $marker = Join-Path $verificationRoot 'runtime-verification.complete'
+          $startupLog = Join-Path $verificationRoot 'startup-crash.log'
+          $env:FMODEL_RECREATE_RUNTIME_MARKER = $marker
+          $env:FMODEL_RECREATE_STARTUP_LOG = $startupLog
 
           $process = Start-Process .\artifacts\publish\FModel-Recreate.exe -ArgumentList '--verify-runtime' -PassThru
           if (!$process.WaitForExit(30000)) {
@@ -100,12 +104,10 @@ jobs:
           }
 
           if ($process.ExitCode -ne 0) {
-            $crashLog = Join-Path $env:APPDATA 'FModel-Recreate\startup-crash.log'
-            if (Test-Path $crashLog) { Get-Content $crashLog }
+            if (Test-Path $startupLog) { Get-Content $startupLog }
             throw "Release executable failed runtime verification with exit code $($process.ExitCode)."
           }
 
-          $marker = Join-Path $env:APPDATA 'FModel-Recreate\runtime-verification.complete'
           if (!(Test-Path $marker)) { throw 'Runtime verification marker was not created.' }
 
       - name: Package and checksum
