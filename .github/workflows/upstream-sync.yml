@@ -14,9 +14,13 @@ on:
     branches: [dev]
     paths:
       - '.github/workflows/upstream-sync.yml'
+      - '.github/workflows/upstream-release.yml'
+      - '.github/workflows/promote-upstream-release.yml'
       - '.github/workflows/release.yml'
       - 'tools/upstream-sync/**'
       - 'UPSTREAM_SYNC.md'
+      - 'RELEASE_CHANNELS.md'
+      - 'README.md'
 
 permissions:
   contents: write
@@ -231,6 +235,7 @@ jobs:
             echo "- Automatic merge candidate: $SAFE"
             echo "- Merge conflicts staged with our side: ${{ steps.integrate.outputs.conflict_count }}"
             echo "- Proposed FModel-Recreate version: ${{ steps.policy.outputs.next_version }}"
+            echo '- Release destination: automated upstream prerelease channel only'
             echo
             cat upstream-risk.md
             echo
@@ -247,7 +252,7 @@ jobs:
               echo '```'
             fi
             echo
-            echo 'The branch is built and the packaged Windows executable is executed before any automatic merge. Protected-path changes, conflicts, failed invariants, failed builds, or concurrent dev changes block automatic publication.'
+            echo 'The branch is built and the packaged Windows executable is executed before any automatic merge. Protected-path changes, conflicts, failed invariants, failed builds, or concurrent dev changes block automatic publication. Successful integrations publish only an upstream-vX.Y.Z prerelease and never create a stable vX.Y.Z release.'
           } > upstream-pr-body.md
 
           TITLE="Sync upstream FModel ${UPSTREAM_SHA:0:12}"
@@ -410,22 +415,22 @@ jobs:
           gh pr merge '${{ needs.prepare.outputs.pr_number }}' --repo "$GITHUB_REPOSITORY" --merge --admin --delete-branch
           echo 'merged=true' >> "$GITHUB_OUTPUT"
 
-  release:
+  upstream-release:
     needs: [prepare, validate, finalize]
     if: needs.finalize.outputs.merged == 'true'
-    uses: ./.github/workflows/release.yml
+    uses: ./.github/workflows/upstream-release.yml
     with:
       version: ${{ needs.prepare.outputs.next_version }}
-      prerelease: false
       ref: dev
+      upstream_sha: ${{ needs.prepare.outputs.upstream_sha }}
     secrets: inherit
 
-  verify-release:
-    needs: [prepare, finalize, release]
+  verify-upstream-release:
+    needs: [prepare, finalize, upstream-release]
     if: needs.finalize.outputs.merged == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Verify published release assets
+      - name: Verify automated upstream prerelease assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -433,14 +438,15 @@ jobs:
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
         run: |
           set -euo pipefail
-          TAG="v$VERSION"
-          ZIP="FModel-Recreate-$VERSION-win-x64.zip"
-          CHECKSUM="FModel-Recreate-$VERSION-win-x64.sha256"
+          TAG="upstream-v$VERSION"
+          ZIP="FModel-Recreate-upstream-$VERSION-win-x64.zip"
+          CHECKSUM="FModel-Recreate-upstream-$VERSION-win-x64.sha256"
 
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets > release.json
           jq -e --arg tag "$TAG" --arg zip "$ZIP" --arg sum "$CHECKSUM" '
             .tagName == $tag and
             .isDraft == false and
+            .isPrerelease == true and
             ([.assets[].name] | index($zip)) != null and
             ([.assets[].name] | index($sum)) != null
           ' release.json > /dev/null
@@ -453,4 +459,4 @@ jobs:
           unzip -l "$ZIP" | grep -q 'FModel-Recreate.exe'
           cd ..
 
-          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Automatically merged the verified upstream update and published FModel-Recreate $TAG. The release ZIP, SHA-256 file, archive integrity, and packaged executable entry were verified."
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Automatically merged the verified upstream update and published it only to the automated prerelease channel as $TAG. No stable vX.Y.Z release was created. The owner may promote this exact build through Actions → Promote Upstream Release."
