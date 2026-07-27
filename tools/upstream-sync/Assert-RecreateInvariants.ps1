@@ -13,7 +13,7 @@ function Get-RequiredContent {
 
     $fullPath = Join-Path $RepositoryRoot $RelativePath
     if (!(Test-Path -LiteralPath $fullPath)) {
-        $failures.Add("Required file is missing: $RelativePath")
+        [void] $failures.Add("Required file is missing: $RelativePath")
         return $null
     }
 
@@ -29,7 +29,7 @@ function Require-Pattern {
 
     $content = Get-RequiredContent -RelativePath $RelativePath
     if ($null -ne $content -and $content -notmatch $Pattern) {
-        $failures.Add("$RelativePath no longer preserves: $Description")
+        [void] $failures.Add("$RelativePath no longer preserves: $Description")
     }
 }
 
@@ -42,7 +42,7 @@ function Forbid-Pattern {
 
     $content = Get-RequiredContent -RelativePath $RelativePath
     if ($null -ne $content -and $content -match $Pattern) {
-        $failures.Add("$RelativePath contains forbidden state: $Description")
+        [void] $failures.Add("$RelativePath contains forbidden state: $Description")
     }
 }
 
