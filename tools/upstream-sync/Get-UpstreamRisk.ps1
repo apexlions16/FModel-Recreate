@@ -37,7 +37,7 @@ $protectedMatches = [System.Collections.Generic.List[string]]::new()
 foreach ($file in $changedFiles) {
     foreach ($pattern in $protectedPatterns) {
         if ($file -like $pattern) {
-            $protectedMatches.Add($file)
+            [void] $protectedMatches.Add($file)
             break
         }
     }
@@ -49,30 +49,30 @@ $highRisk = $protectedMatches.Count -gt 0 -or $largeChange
 
 $reasons = [System.Collections.Generic.List[string]]::new()
 if ($protectedMatches.Count -gt 0) {
-    $reasons.Add("Upstream modifies $($protectedMatches.Count) protected FModel-Recreate path(s).")
+    [void] $reasons.Add("Upstream modifies $($protectedMatches.Count) protected FModel-Recreate path(s).")
 }
 if ($largeChange) {
-    $reasons.Add("Upstream changes $($changedFiles.Count) files, exceeding the 150-file automatic-merge limit.")
+    [void] $reasons.Add("Upstream changes $($changedFiles.Count) files, exceeding the 150-file automatic-merge limit.")
 }
 if ($reasons.Count -eq 0) {
-    $reasons.Add('No protected paths or oversized change set detected.')
+    [void] $reasons.Add('No protected paths or oversized change set detected.')
 }
 
 if ($ReportPath) {
     $report = [System.Collections.Generic.List[string]]::new()
-    $report.Add('# Upstream sync risk report')
-    $report.Add('')
-    $report.Add("- Changed files: $($changedFiles.Count)")
-    $report.Add("- Protected-path matches: $($protectedMatches.Count)")
-    $report.Add("- High risk: $($highRisk.ToString().ToLowerInvariant())")
-    $report.Add('')
-    $report.Add('## Reasons')
-    foreach ($reason in $reasons) { $report.Add("- $reason") }
+    [void] $report.Add('# Upstream sync risk report')
+    [void] $report.Add('')
+    [void] $report.Add("- Changed files: $($changedFiles.Count)")
+    [void] $report.Add("- Protected-path matches: $($protectedMatches.Count)")
+    [void] $report.Add("- High risk: $($highRisk.ToString().ToLowerInvariant())")
+    [void] $report.Add('')
+    [void] $report.Add('## Reasons')
+    foreach ($reason in $reasons) { [void] $report.Add("- $reason") }
 
     if ($protectedMatches.Count -gt 0) {
-        $report.Add('')
-        $report.Add('## Protected paths touched')
-        foreach ($match in $protectedMatches) { $report.Add("- `$match`") }
+        [void] $report.Add('')
+        [void] $report.Add('## Protected paths touched')
+        foreach ($match in $protectedMatches) { [void] $report.Add("- `$match`") }
     }
 
     $reportDirectory = Split-Path -Parent $ReportPath
