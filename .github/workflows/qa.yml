@@ -23,20 +23,25 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
       - name: Verify submodules
         shell: pwsh
         run: |
           git submodule status --recursive
           if ((git submodule status --recursive) -match '^[-+]') { throw 'Invalid submodule state.' }
+
       - name: Restore
         run: dotnet restore .\FModel\FModel.csproj -r win-x64
+
       - name: Audit NuGet dependencies
         shell: pwsh
         run: dotnet list .\FModel\FModel.csproj package --vulnerable --include-transitive
+
       - name: Build
         id: build
         continue-on-error: true
@@ -44,6 +49,7 @@ jobs:
         run: |
           dotnet build .\FModel\FModel.csproj -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true 2>&1 | Tee-Object -FilePath build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Upload compiler diagnostics
         if: steps.build.outcome == 'failure'
         uses: actions/upload-artifact@v4
@@ -52,20 +58,94 @@ jobs:
           path: build.log
           if-no-files-found: error
           retention-days: 7
+
       - name: Stop after compiler failure
         if: steps.build.outcome == 'failure'
         shell: pwsh
         run: throw 'Compilation failed.'
-      - name: Publish QA executable
-        if: github.event_name != 'pull_request'
-        run: dotnet publish .\FModel\FModel.csproj -c Release --no-restore --no-self-contained -r win-x64 -f net10.0-windows -o .\artifacts\publish -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:InformationalVersion=0.1.0-qa+${{ github.sha }}
+
+      - name: Publish self-contained executable
+        run: dotnet publish .\FModel\FModel.csproj -c Release --no-restore --self-contained true -r win-x64 -f net10.0-windows -o .\artifacts\publish -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+
+      - name: Prepare branded executable
+        shell: pwsh
+        run: Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
+
+      - name: Verify published runtime
+        id: runtime
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Runtime-Verification'
+          Remove-Item $verificationRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
+          $statusFile = Join-Path $verificationRoot 'runtime-status.txt'
+          $status = [System.Collections.Generic.List[string]]::new()
+          $failure = $null
+
+          foreach ($executableName in @('FModel.exe', 'FModel-Recreate.exe')) {
+            $caseRoot = Join-Path $verificationRoot ([IO.Path]::GetFileNameWithoutExtension($executableName))
+            New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+            $marker = Join-Path $caseRoot 'runtime-verification.complete'
+            $startupLog = Join-Path $caseRoot 'startup-crash.log'
+            $env:FMODEL_RECREATE_RUNTIME_MARKER = $marker
+            $env:FMODEL_RECREATE_STARTUP_LOG = $startupLog
+            $executable = Join-Path '.\artifacts\publish' $executableName
+
+            $status.Add("Executable=$executable")
+            $status.Add("Size=$((Get-Item $executable).Length)")
+            $process = Start-Process $executable -ArgumentList '--verify-runtime' -PassThru
+            $completed = $process.WaitForExit(30000)
+            $status.Add("Completed=$completed")
+
+            if (!$completed) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              $status.Add('Result=TIMEOUT')
+              $failure = "$executableName timed out."
+            } else {
+              $status.Add("ExitCode=$($process.ExitCode)")
+              $status.Add("MarkerExists=$(Test-Path $marker)")
+              if (Test-Path $startupLog) {
+                $status.Add('StartupLogBegin')
+                $status.Add((Get-Content $startupLog -Raw))
+                $status.Add('StartupLogEnd')
+              }
+
+              if ($process.ExitCode -ne 0) {
+                $failure = "$executableName exited with code $($process.ExitCode)."
+              } elseif (!(Test-Path $marker)) {
+                $failure = "$executableName did not create its marker."
+              }
+            }
+
+            $status.Add('---')
+            if ($failure) { break }
+          }
+
+          $status | Set-Content $statusFile
+          if ($failure) { throw $failure }
+
+      - name: Upload runtime diagnostics
+        if: steps.runtime.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/FModel-Recreate-Runtime-Verification
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop after runtime failure
+        if: steps.runtime.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Published executable runtime verification failed.'
+
       - name: Package QA build
         if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
-          Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
           Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath .\artifacts\FModel-Recreate-QA-${{ github.sha }}.zip -Force
           (Get-FileHash .\artifacts\FModel-Recreate-QA-${{ github.sha }}.zip -Algorithm SHA256).Hash.ToLower() + '  FModel-Recreate-QA-${{ github.sha }}.zip' | Set-Content .\artifacts\FModel-Recreate-QA-${{ github.sha }}.sha256
+
       - name: Upload QA artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
@@ -75,13 +155,14 @@ jobs:
             artifacts/FModel-Recreate-QA-${{ github.sha }}.zip
             artifacts/FModel-Recreate-QA-${{ github.sha }}.sha256
           if-no-files-found: error
+
       - name: Update rolling QA release
         if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: qa
           name: FModel-Recreate QA
-          body: Rolling test build from `${{ github.sha }}`.
+          body: Rolling self-contained test build from `${{ github.sha }}`. The Windows x64 package does not require a separately installed .NET runtime.
           prerelease: true
           make_latest: false
           files: |

@@ -33,10 +33,12 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
       - name: Resolve and validate version
         id: version
         shell: pwsh
@@ -50,6 +52,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "numeric_version=$numericVersion" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
+
       - name: Check for an existing release
         id: existing
         shell: pwsh
@@ -63,23 +66,58 @@ jobs:
             "exists=false" >> $env:GITHUB_OUTPUT
             exit 0
           }
+
       - name: Restore
         if: steps.existing.outputs.exists != 'true'
         run: dotnet restore .\FModel\FModel.csproj -r win-x64
+
       - name: Build
         if: steps.existing.outputs.exists != 'true'
         run: dotnet build .\FModel\FModel.csproj -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true
-      - name: Publish
+
+      - name: Publish self-contained executable
         if: steps.existing.outputs.exists != 'true'
-        run: dotnet publish .\FModel\FModel.csproj -c Release --no-restore --no-self-contained -r win-x64 -f net10.0-windows -o .\artifacts\publish -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:Version=${{ steps.version.outputs.version }} -p:FileVersion=${{ steps.version.outputs.numeric_version }} -p:AssemblyVersion=${{ steps.version.outputs.numeric_version }}
+        run: dotnet publish .\FModel\FModel.csproj -c Release --no-restore --self-contained true -r win-x64 -f net10.0-windows -o .\artifacts\publish -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -p:Version=${{ steps.version.outputs.version }} -p:FileVersion=${{ steps.version.outputs.numeric_version }} -p:AssemblyVersion=${{ steps.version.outputs.numeric_version }}
+
+      - name: Prepare branded executable
+        if: steps.existing.outputs.exists != 'true'
+        shell: pwsh
+        run: Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
+
+      - name: Verify published runtime
+        if: steps.existing.outputs.exists != 'true'
+        shell: pwsh
+        run: |
+          $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Release-Verification'
+          Remove-Item $verificationRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
+
+          $marker = Join-Path $verificationRoot 'runtime-verification.complete'
+          $startupLog = Join-Path $verificationRoot 'startup-crash.log'
+          $env:FMODEL_RECREATE_RUNTIME_MARKER = $marker
+          $env:FMODEL_RECREATE_STARTUP_LOG = $startupLog
+
+          $process = Start-Process .\artifacts\publish\FModel-Recreate.exe -ArgumentList '--verify-runtime' -PassThru
+          if (!$process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'Release executable did not finish runtime verification within 30 seconds.'
+          }
+
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path $startupLog) { Get-Content $startupLog }
+            throw "Release executable failed runtime verification with exit code $($process.ExitCode)."
+          }
+
+          if (!(Test-Path $marker)) { throw 'Runtime verification marker was not created.' }
+
       - name: Package and checksum
         if: steps.existing.outputs.exists != 'true'
         shell: pwsh
         run: |
           $name = 'FModel-Recreate-${{ steps.version.outputs.version }}-win-x64'
-          Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
           Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath ".\artifacts\$name.zip" -Force
           (Get-FileHash ".\artifacts\$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Set-Content ".\artifacts\$name.sha256"
+
       - name: Create GitHub release
         if: steps.existing.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
@@ -90,6 +128,14 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ inputs.prerelease || false }}
           make_latest: true
+          body: |
+            Self-contained Windows x64 release. A separate .NET installation is not required.
+
+            Startup fixes in this release:
+            - explicit WPF main-window ownership after the first-run language wizard;
+            - bundled .NET 10 runtime and native dependencies;
+            - pre-release runtime verification of the published executable;
+            - startup crash log at `%APPDATA%\FModel-Recreate\startup-crash.log`.
           files: |
             artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.zip
             artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.sha256

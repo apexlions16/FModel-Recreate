@@ -18,6 +18,8 @@ public static class AppPaths
     public static readonly string DebugSettingsFile = Path.Combine(AppDataDirectory, "AppSettings_Debug.json");
     public static readonly string UiLanguageFile = Path.Combine(AppDataDirectory, "ui-language.txt");
     public static readonly string FirstRunMarker = Path.Combine(AppDataDirectory, "first-run-v1.complete");
+    public static readonly string RuntimeVerificationMarker = Path.Combine(AppDataDirectory, "runtime-verification.complete");
+    public static readonly string StartupCrashLog = Path.Combine(AppDataDirectory, "startup-crash.log");
 
     public static string ActiveSettingsFile
     {

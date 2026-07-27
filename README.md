@@ -13,14 +13,22 @@ FModel-Recreate is a Windows Unreal Engine archive explorer and the foundation f
 
 ## Release channels
 
-- **Stable:** semantic-versioned releases such as `v0.1.0`.
+- **Stable:** semantic-versioned releases such as `v0.1.1`.
 - **QA:** a rolling prerelease built from the latest successful `dev` commit.
 
-Every release includes a Windows x64 ZIP and a SHA-256 checksum file.
+Every release includes a Windows x64 ZIP and a SHA-256 checksum file. The packaged executable is self-contained; users do not need to install .NET separately.
+
+## Startup diagnostics
+
+When the application cannot finish its startup sequence, it writes a diagnostic file to:
+
+```text
+%APPDATA%\FModel-Recreate\startup-crash.log
+```
 
 ## Building
 
-Requirements:
+Requirements for source builds:
 
 - Windows
 - .NET 10 SDK
