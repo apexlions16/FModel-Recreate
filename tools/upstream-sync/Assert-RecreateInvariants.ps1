@@ -77,14 +77,36 @@ Require-Pattern 'FModel/ViewModels/ApiEndpointViewModel.cs' 'FModel-Recreate/' '
 
 Require-Pattern '.github/workflows/qa.yml' '--self-contained true' 'self-contained QA publishing'
 Require-Pattern '.github/workflows/qa.yml' 'Verify published runtime' 'QA execution of the packaged executable'
+
+Require-Pattern '.github/workflows/release.yml' 'workflow_dispatch:' 'manual stable publication entry point'
+Require-Pattern '.github/workflows/release.yml' "github\.actor.*apexlions16|GITHUB_ACTOR.*apexlions16" 'repository-owner authorization for stable publication'
 Require-Pattern '.github/workflows/release.yml' '--self-contained true' 'self-contained stable publishing'
 Require-Pattern '.github/workflows/release.yml' 'Verify published runtime' 'stable release execution of the packaged executable'
 Require-Pattern '.github/workflows/release.yml' 'softprops/action-gh-release' 'GitHub Release publication'
+Require-Pattern '.github/workflows/release.yml' 'prerelease:\s*false' 'stable releases that are never marked as prereleases'
+Forbid-Pattern '.github/workflows/release.yml' '(?m)^\s*push:' 'automatic push-triggered stable publication'
+Forbid-Pattern '.github/workflows/release.yml' '(?m)^\s*workflow_call:' 'automation-callable stable publication'
+
+Require-Pattern '.github/workflows/upstream-release.yml' 'workflow_call:' 'the reusable automated upstream publication entry point'
+Require-Pattern '.github/workflows/upstream-release.yml' 'upstream-v\$version|upstream-v\$\{\{' 'the separate upstream tag namespace'
+Require-Pattern '.github/workflows/upstream-release.yml' 'prerelease:\s*true' 'automated upstream builds marked as prereleases'
+Require-Pattern '.github/workflows/upstream-release.yml' 'make_latest:\s*false' 'automated upstream builds excluded from the stable latest pointer'
+Require-Pattern '.github/workflows/upstream-release.yml' 'FModel-Recreate-upstream-' 'separate automated-channel asset names'
+
+Require-Pattern '.github/workflows/promote-upstream-release.yml' 'workflow_dispatch:' 'manual promotion entry point'
+Require-Pattern '.github/workflows/promote-upstream-release.yml' 'GITHUB_ACTOR.*apexlions16' 'repository-owner authorization for promotion'
+Require-Pattern '.github/workflows/promote-upstream-release.yml' '\^upstream-v' 'promotion restricted to automated upstream tags'
+Require-Pattern '.github/workflows/promote-upstream-release.yml' 'STABLE_TAG="v\$VERSION"' 'stable tag creation during promotion'
+Require-Pattern '.github/workflows/promote-upstream-release.yml' 'sha256sum -c' 'checksum verification before and after promotion'
+Require-Pattern '.github/workflows/promote-upstream-release.yml' 'isPrerelease == false' 'post-promotion stable release verification'
 
 Require-Pattern '.github/workflows/upstream-sync.yml' 'persist-credentials:\s*false' 'fork credential isolation before public upstream fetches'
 Require-Pattern '.github/workflows/upstream-sync.yml' 'git fetch --no-tags upstream' 'branch-only upstream fetching without conflicting release tags'
 Require-Pattern '.github/workflows/upstream-sync.yml' 'gh auth setup-git' 'delayed authentication before pushing the integration branch'
 Require-Pattern '.github/workflows/upstream-sync.yml' 'Smoke-test public upstream fetch' 'a live upstream fetch check on workflow changes'
+Require-Pattern '.github/workflows/upstream-sync.yml' 'uses:\s+\./\.github/workflows/upstream-release\.yml' 'automatic publication routed to the upstream prerelease channel'
+Require-Pattern '.github/workflows/upstream-sync.yml' 'TAG="upstream-v\$VERSION"' 'verification of the separate upstream tag namespace'
+Forbid-Pattern '.github/workflows/upstream-sync.yml' 'uses:\s+\./\.github/workflows/release\.yml' 'automatic access to the stable release workflow'
 
 if ($failures.Count -gt 0) {
     $message = "FModel-Recreate invariant guard failed:`n- " + ($failures -join "`n- ")
