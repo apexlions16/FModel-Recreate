@@ -72,29 +72,72 @@ jobs:
         run: Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
 
       - name: Verify published runtime
+        id: runtime
+        continue-on-error: true
         shell: pwsh
         run: |
           $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Runtime-Verification'
           Remove-Item $verificationRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
+          $statusFile = Join-Path $verificationRoot 'runtime-status.txt'
+          $status = [System.Collections.Generic.List[string]]::new()
+          $failure = $null
 
-          $marker = Join-Path $verificationRoot 'runtime-verification.complete'
-          $startupLog = Join-Path $verificationRoot 'startup-crash.log'
-          $env:FMODEL_RECREATE_RUNTIME_MARKER = $marker
-          $env:FMODEL_RECREATE_STARTUP_LOG = $startupLog
+          foreach ($executableName in @('FModel.exe', 'FModel-Recreate.exe')) {
+            $caseRoot = Join-Path $verificationRoot ([IO.Path]::GetFileNameWithoutExtension($executableName))
+            New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+            $marker = Join-Path $caseRoot 'runtime-verification.complete'
+            $startupLog = Join-Path $caseRoot 'startup-crash.log'
+            $env:FMODEL_RECREATE_RUNTIME_MARKER = $marker
+            $env:FMODEL_RECREATE_STARTUP_LOG = $startupLog
+            $executable = Join-Path '.\artifacts\publish' $executableName
 
-          $process = Start-Process .\artifacts\publish\FModel-Recreate.exe -ArgumentList '--verify-runtime' -PassThru
-          if (!$process.WaitForExit(30000)) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            throw 'Published executable did not finish runtime verification within 30 seconds.'
+            $status.Add("Executable=$executable")
+            $status.Add("Size=$((Get-Item $executable).Length)")
+            $process = Start-Process $executable -ArgumentList '--verify-runtime' -PassThru
+            $completed = $process.WaitForExit(30000)
+            $status.Add("Completed=$completed")
+
+            if (!$completed) {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              $status.Add('Result=TIMEOUT')
+              $failure = "$executableName timed out."
+            } else {
+              $status.Add("ExitCode=$($process.ExitCode)")
+              $status.Add("MarkerExists=$(Test-Path $marker)")
+              if (Test-Path $startupLog) {
+                $status.Add('StartupLogBegin')
+                $status.Add((Get-Content $startupLog -Raw))
+                $status.Add('StartupLogEnd')
+              }
+
+              if ($process.ExitCode -ne 0) {
+                $failure = "$executableName exited with code $($process.ExitCode)."
+              } elseif (!(Test-Path $marker)) {
+                $failure = "$executableName did not create its marker."
+              }
+            }
+
+            $status.Add('---')
+            if ($failure) { break }
           }
 
-          if ($process.ExitCode -ne 0) {
-            if (Test-Path $startupLog) { Get-Content $startupLog }
-            throw "Published executable failed runtime verification with exit code $($process.ExitCode)."
-          }
+          $status | Set-Content $statusFile
+          if ($failure) { throw $failure }
 
-          if (!(Test-Path $marker)) { throw 'Runtime verification marker was not created.' }
+      - name: Upload runtime diagnostics
+        if: steps.runtime.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/FModel-Recreate-Runtime-Verification
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop after runtime failure
+        if: steps.runtime.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Published executable runtime verification failed.'
 
       - name: Package QA build
         if: github.event_name != 'pull_request'
