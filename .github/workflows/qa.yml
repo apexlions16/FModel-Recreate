@@ -55,6 +55,7 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
+          Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
           Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath .\artifacts\FModel-Recreate-QA-${{ github.sha }}.zip -Force
           (Get-FileHash .\artifacts\FModel-Recreate-QA-${{ github.sha }}.zip -Algorithm SHA256).Hash.ToLower() + '  FModel-Recreate-QA-${{ github.sha }}.zip' | Set-Content .\artifacts\FModel-Recreate-QA-${{ github.sha }}.sha256
 
