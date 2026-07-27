@@ -84,6 +84,7 @@ jobs:
         shell: pwsh
         run: |
           $name = 'FModel-Recreate-${{ steps.version.outputs.version }}-win-x64'
+          Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
           Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath ".\artifacts\$name.zip" -Force
           (Get-FileHash ".\artifacts\$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Set-Content ".\artifacts\$name.sha256"
 
