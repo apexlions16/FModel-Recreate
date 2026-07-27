@@ -14,6 +14,7 @@ using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.VirtualFileSystem;
 using FModel.Extensions;
 using FModel.Framework;
+using FModel.Localization;
 using FModel.Services;
 using FModel.Settings;
 using FModel.ViewModels.Commands;
@@ -78,8 +79,8 @@ public class ApplicationViewModel : ViewModel
     public CopyCommand CopyCommand => _copyCommand ??= new CopyCommand(this);
     private CopyCommand _copyCommand;
 
-    public string InitialWindowTitle => $"FModel ({Constants.APP_SHORT_COMMIT_ID} - {Constants.APP_BUILD_DATE:MMM d, yyyy})";
-    public string GameDisplayName => CUE4Parse.Provider.GameDisplayName ?? "Unknown";
+    public string InitialWindowTitle => $"{Constants.APP_NAME} ({Constants.APP_SHORT_COMMIT_ID} - {Constants.APP_BUILD_DATE:MMM d, yyyy})";
+    public string GameDisplayName => CUE4Parse.Provider.GameDisplayName ?? LocalizationManager.Get("Unknown");
     public string TitleExtra => $"({UserSettings.Default.CurrentDir.UeVersion}){(Build != EBuildKind.Release ? $" ({Build})" : "")}";
 
     public LoadingModesViewModel LoadingModes { get; }
@@ -104,8 +105,7 @@ public class ApplicationViewModel : ViewModel
         UserSettings.Default.CurrentDir = AvoidEmptyGameDirectory(false);
         if (UserSettings.Default.CurrentDir is null)
         {
-            //If no game is selected, many things will break before a shutdown request is processed in the normal way.
-            //A hard exit is preferable to an unhandled exception in this case
+            // If no game is selected, many things will break before a shutdown request is processed normally.
             Environment.Exit(0);
         }
 
@@ -151,7 +151,6 @@ public class ApplicationViewModel : ViewModel
         if (!bAlreadyLaunched || UserSettings.Default.CurrentDir.Equals(gameLauncherViewModel.SelectedDirectory))
             return gameLauncherViewModel.SelectedDirectory;
 
-        // UserSettings.Save(); // ??? change key then change game, key saved correctly what?
         UserSettings.Default.CurrentDir = gameLauncherViewModel.SelectedDirectory;
         RestartWithWarning();
         return null;
@@ -188,7 +187,11 @@ public class ApplicationViewModel : ViewModel
 
     public void RestartWithWarning()
     {
-        MessageBox.Show("It looks like you just changed something.\nFModel will restart to apply your changes.", "Uh oh, a restart is needed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        MessageBox.Show(
+            LocalizationManager.Get("It looks like you just changed something.\nFModel-Recreate will restart to apply your changes."),
+            LocalizationManager.Get("A restart is needed"),
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
         Restart();
     }
 
@@ -235,10 +238,9 @@ public class ApplicationViewModel : ViewModel
         CUE4Parse.ClearProvider();
         await ApplicationService.ThreadWorkerView.Begin(cancellationToken =>
         {
-            // TODO: refactor after release, select updated keys only
             var aes = AesManager.AesKeys.Select(x =>
             {
-                cancellationToken.ThrowIfCancellationRequested(); // cancel if needed
+                cancellationToken.ThrowIfCancellationRequested();
 
                 var k = x.Key.Trim();
                 if (k.Length != 66) k = Constants.ZERO_64_CHAR;
@@ -258,7 +260,9 @@ public class ApplicationViewModel : ViewModel
 
         if (!vgmFileInfo.Exists || vgmFileInfo.LastWriteTimeUtc < DateTime.UtcNow.AddMonths(-4))
         {
-            await ApplicationService.ApiEndpointView.DownloadFileAsync("https://github.com/vgmstream/vgmstream/releases/latest/download/vgmstream-win.zip", vgmZipFilePath);
+            await ApplicationService.ApiEndpointView.DownloadFileAsync(
+                "https://github.com/vgmstream/vgmstream/releases/latest/download/vgmstream-win.zip",
+                vgmZipFilePath);
             vgmFileInfo.Refresh();
 
             if (vgmFileInfo.Length > 0)
