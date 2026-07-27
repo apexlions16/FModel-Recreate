@@ -131,11 +131,7 @@ jobs:
           body: |
             Self-contained Windows x64 release. A separate .NET installation is not required.
 
-            Startup fixes in this release:
-            - explicit WPF main-window ownership after the first-run language wizard;
-            - bundled .NET 10 runtime and native dependencies;
-            - pre-release runtime verification of the published executable;
-            - startup crash log at `%APPDATA%\FModel-Recreate\startup-crash.log`.
+            The published executable passed the Windows runtime verification gate before this release was created. See the generated commit history for the complete list of fixes and changes.
           files: |
             artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.zip
             artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.sha256
