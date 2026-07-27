@@ -18,13 +18,14 @@ public sealed class LocResCodecTests
 
         Assert.Equal(version, parsed.Version);
         Assert.Equal(document.Entries.Count, parsed.Entries.Count);
-        Assert.Equal("Merhaba dünya", parsed.Entries.Single(entry => entry.Key == "Greeting").LocalizedString);
-        Assert.Equal("Çıkış", parsed.Entries.Single(entry => entry.Key == "Exit").LocalizedString);
-        Assert.Equal(0x10203040u, parsed.Entries.Single(entry => entry.Key == "Greeting").SourceStringHash);
+        Assert.Equal("Merhaba dünya", GetEntry(parsed, "Menu", "Greeting").LocalizedString);
+        Assert.Equal("Çıkış", GetEntry(parsed, "Menu", "Exit").LocalizedString);
+        Assert.Equal("Çıkış", GetEntry(parsed, "HUD", "Exit").LocalizedString);
+        Assert.Equal(0x10203040u, GetEntry(parsed, "Menu", "Greeting").SourceStringHash);
         if (version >= LocResVersion.OptimizedCrc32)
         {
-            Assert.Equal(0x11111111u, parsed.Entries[0].NamespaceHash);
-            Assert.Equal(0x22222222u, parsed.Entries[0].KeyHash);
+            Assert.Equal(0x11111111u, GetEntry(parsed, "Menu", "Greeting").NamespaceHash);
+            Assert.Equal(0x22222222u, GetEntry(parsed, "Menu", "Greeting").KeyHash);
         }
     }
 
@@ -38,10 +39,11 @@ public sealed class LocResCodecTests
             [("Menu", "Exit")] = "Oyundan Çık"
         });
 
-        Assert.Equal("Merhaba dünya", translated.Entries.Single(entry => entry.Key == "Greeting").LocalizedString);
-        Assert.Equal("Oyundan Çık", translated.Entries.Single(entry => entry.Key == "Exit").LocalizedString);
-        Assert.Equal(source.Entries.Single(entry => entry.Key == "Exit").KeyHash,
-            translated.Entries.Single(entry => entry.Key == "Exit").KeyHash);
+        Assert.Equal("Merhaba dünya", GetEntry(translated, "Menu", "Greeting").LocalizedString);
+        Assert.Equal("Oyundan Çık", GetEntry(translated, "Menu", "Exit").LocalizedString);
+        Assert.Equal("Çıkış", GetEntry(translated, "HUD", "Exit").LocalizedString);
+        Assert.Equal(GetEntry(source, "Menu", "Exit").KeyHash,
+            GetEntry(translated, "Menu", "Exit").KeyHash);
     }
 
     [Fact]
@@ -58,6 +60,11 @@ public sealed class LocResCodecTests
         using var stream = new MemoryStream();
         Assert.Throws<InvalidDataException>(() => new LocResCodec().Write(stream, document));
     }
+
+    private static LocResEntry GetEntry(LocResDocument document, string @namespace, string key) =>
+        document.Entries.Single(entry =>
+            entry.Namespace.Equals(@namespace, StringComparison.Ordinal) &&
+            entry.Key.Equals(key, StringComparison.Ordinal));
 
     private static LocResDocument CreateDocument(LocResVersion version)
     {
