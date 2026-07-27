@@ -20,9 +20,17 @@ jobs:
           submodules: recursive
 
       - name: Fetch and dry-run current upstream
+        id: dryrun
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          : > current-upstream-status.txt
+          : > current-upstream-files.txt
+          : > current-upstream-risk.md
+          : > current-upstream-conflicts.txt
+          trap 'code=$?; echo "FailureExit=$code" >> current-upstream-status.txt; echo "FailureLine=$LINENO" >> current-upstream-status.txt; exit $code' ERR
+
           git config user.name 'fmodel-recreate-smoke-test'
           git config user.email 'actions@users.noreply.github.com'
           git remote add upstream https://github.com/4sval/FModel.git
@@ -30,7 +38,6 @@ jobs:
 
           UPSTREAM_SHA=$(git rev-parse upstream/dev)
           FORK_SHA=$(git rev-parse HEAD)
-          : > current-upstream-conflicts.txt
 
           if MERGE_BASE=$(git merge-base HEAD upstream/dev); then
             HISTORY_RELATED=true
@@ -74,6 +81,7 @@ jobs:
           fi
 
       - name: Upload dry-run report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: current-upstream-smoke-${{ github.sha }}
@@ -84,3 +92,8 @@ jobs:
             current-upstream-conflicts.txt
           if-no-files-found: error
           retention-days: 7
+
+      - name: Stop after dry-run failure
+        if: steps.dryrun.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Current upstream dry-run failed; inspect the uploaded report.'
