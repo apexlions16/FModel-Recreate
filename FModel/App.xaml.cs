@@ -37,13 +37,70 @@ public partial class App
         AttachConsole(-1);
 #endif
         base.OnStartup(e);
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-        UserSettings.Default = SettingsStorage.Load();
-        LocalizationManager.Initialize();
-        if (!File.Exists(AppPaths.FirstRunMarker))
-            new FirstRunWizard().ShowDialog();
+        try
+        {
+            UserSettings.Default = SettingsStorage.Load();
+            LocalizationManager.Initialize();
 
-        var createMe = false;
+            if (Array.Exists(e.Args, argument =>
+                    string.Equals(argument, "--verify-runtime", StringComparison.OrdinalIgnoreCase)))
+            {
+                VerifyRuntimeBundle();
+                Shutdown(0);
+                return;
+            }
+
+            if (!File.Exists(AppPaths.FirstRunMarker))
+            {
+                var wizardResult = new FirstRunWizard().ShowDialog();
+                MainWindow = null;
+                if (wizardResult != true)
+                {
+                    Shutdown(0);
+                    return;
+                }
+            }
+
+            InitializeApplicationDirectories();
+            InitializeLogging();
+
+            CacheManager.MigrateLegacyFiles();
+            Log.Information("{Product} version {Version} ({CommitId})", Constants.APP_NAME, Constants.APP_VERSION, Constants.APP_COMMIT_ID);
+            Log.Information("{OS}", GetOperatingSystemProductName());
+            Log.Information("{RuntimeVer}", RuntimeInformation.FrameworkDescription);
+            Log.Information("Culture {SysLang}", CultureInfo.CurrentCulture);
+
+            var mainWindow = new MainWindow();
+            MainWindow = mainWindow;
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            mainWindow.Show();
+        }
+        catch (Exception exception)
+        {
+            WriteStartupFailure(exception);
+            System.Windows.MessageBox.Show(
+                $"FModel-Recreate could not start.\n\n{exception.GetBaseException().GetType().Name}: {exception.GetBaseException().Message}\n\n" +
+                $"A diagnostic log was written to:\n{AppPaths.StartupCrashLog}",
+                "FModel-Recreate Startup Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(-1);
+        }
+    }
+
+    private static void VerifyRuntimeBundle()
+    {
+        Directory.CreateDirectory(AppPaths.AppDataDirectory);
+        _ = Current.FindResource("BoolToVisibilityConverter");
+        _ = new FirstRunWizard();
+        File.WriteAllText(AppPaths.RuntimeVerificationMarker, DateTimeOffset.UtcNow.ToString("O"));
+    }
+
+    private static void InitializeApplicationDirectories()
+    {
+        var createExports = false;
         if (!Directory.Exists(UserSettings.Default.OutputDirectory))
         {
             var currentDir = AppContext.BaseDirectory;
@@ -66,46 +123,49 @@ public partial class App
 
         if (!Directory.Exists(UserSettings.Default.RawDataDirectory))
         {
-            createMe = true;
+            createExports = true;
             UserSettings.Default.RawDataDirectory = Path.Combine(UserSettings.Default.OutputDirectory, "Exports");
         }
 
         if (!Directory.Exists(UserSettings.Default.PropertiesDirectory))
         {
-            createMe = true;
+            createExports = true;
             UserSettings.Default.PropertiesDirectory = Path.Combine(UserSettings.Default.OutputDirectory, "Exports");
         }
 
         if (!Directory.Exists(UserSettings.Default.TextureDirectory))
         {
-            createMe = true;
+            createExports = true;
             UserSettings.Default.TextureDirectory = Path.Combine(UserSettings.Default.OutputDirectory, "Exports");
         }
 
         if (!Directory.Exists(UserSettings.Default.AudioDirectory))
         {
-            createMe = true;
+            createExports = true;
             UserSettings.Default.AudioDirectory = Path.Combine(UserSettings.Default.OutputDirectory, "Exports");
         }
 
         if (!Directory.Exists(UserSettings.Default.CodeDirectory))
         {
-            createMe = true;
+            createExports = true;
             UserSettings.Default.CodeDirectory = Path.Combine(UserSettings.Default.OutputDirectory, "Exports");
         }
 
         if (!Directory.Exists(UserSettings.Default.ModelDirectory))
         {
-            createMe = true;
+            createExports = true;
             UserSettings.Default.ModelDirectory = Path.Combine(UserSettings.Default.OutputDirectory, "Exports");
         }
 
         Directory.CreateDirectory(AppPaths.AppDataDirectory);
         Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Backups"));
-        if (createMe) Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Exports"));
+        if (createExports) Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Exports"));
         Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Logs"));
         CacheManager.EnsureDirectories();
+    }
 
+    private static void InitializeLogging()
+    {
         const string template = "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Enriched}: {Message:lj}{NewLine}{Exception}";
         Log.Logger = new LoggerConfiguration()
 #if DEBUG
@@ -120,25 +180,41 @@ public partial class App
                 path: Path.Combine(UserSettings.Default.OutputDirectory, "Logs", $"FModel-Recreate-Log-{DateTime.Now:yyyy-MM-dd}.log"))
 #endif
             .CreateLogger();
+    }
 
-        CacheManager.MigrateLegacyFiles();
-        Log.Information("{Product} version {Version} ({CommitId})", Constants.APP_NAME, Constants.APP_VERSION, Constants.APP_COMMIT_ID);
-        Log.Information("{OS}", GetOperatingSystemProductName());
-        Log.Information("{RuntimeVer}", RuntimeInformation.FrameworkDescription);
-        Log.Information("Culture {SysLang}", CultureInfo.CurrentCulture);
+    private static void WriteStartupFailure(Exception exception)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.AppDataDirectory);
+            File.AppendAllText(
+                AppPaths.StartupCrashLog,
+                $"[{DateTimeOffset.Now:O}] {exception}\n\n");
+        }
+        catch
+        {
+            // A startup diagnostic must never replace the original failure.
+        }
     }
 
     private void AppExit(object sender, ExitEventArgs e)
     {
-        Log.Information("––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––");
-        Log.CloseAndFlush();
-        SettingsStorage.Save();
-        Environment.Exit(0);
+        try
+        {
+            Log.Information("––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––");
+            Log.CloseAndFlush();
+            SettingsStorage.Save();
+        }
+        finally
+        {
+            Environment.Exit(e.ApplicationExitCode);
+        }
     }
 
     private void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         Log.Error("{Exception}", e.Exception);
+        WriteStartupFailure(e.Exception);
 
         var messageBox = new MessageBoxModel
         {
@@ -162,7 +238,14 @@ public partial class App
             if ((EErrorKind) messageBox.ButtonPressed.Id == EErrorKind.ResetSettings)
                 SettingsStorage.Delete();
 
-            ApplicationService.ApplicationView.Restart();
+            try
+            {
+                ApplicationService.ApplicationView.Restart();
+            }
+            catch
+            {
+                Shutdown(-1);
+            }
         }
 
         e.Handled = true;
