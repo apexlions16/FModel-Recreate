@@ -21,16 +21,33 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Decode, apply, and commit source payload
+      - name: Verify payload bytes and archive
         shell: bash
         run: |
           set -euo pipefail
+          find .automation/modtools-payload -maxdepth 1 -type f -name 'chunk-*' -printf '%f %s\n' | sort
+          CHUNK_COUNT=$(find .automation/modtools-payload -maxdepth 1 -type f -name 'chunk-*' | wc -l)
+          [[ "$CHUNK_COUNT" -eq 8 ]]
           cat .automation/modtools-payload/chunk-* | base64 -d > /tmp/modtools-payload.tar.gz
-          tar -tzf /tmp/modtools-payload.tar.gz > /tmp/modtools-payload-files.txt
-          tar -xzf /tmp/modtools-payload.tar.gz -C .
-          rm -rf .automation/modtools-payload
-          rm .github/workflows/apply-modtools-payload.yml
+          [[ $(wc -c < /tmp/modtools-payload.tar.gz) -eq 25240 ]]
+          echo 'ad8681d3d0d1db18819572e57f0f8fd9a9cdb847019f94b32c84c26e501d7e3e  /tmp/modtools-payload.tar.gz' | sha256sum -c -
+          tar -tzf /tmp/modtools-payload.tar.gz | tee /tmp/modtools-payload-files.txt
 
+      - name: Extract source payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -xzf /tmp/modtools-payload.tar.gz -C .
+          test -f FModel.ModTools/FModel.ModTools.csproj
+          test -f FModel.ModTools.Tests/FModel.ModTools.Tests.csproj
+          test -f FModel.ModTools/LocResCodec.cs
+          test -f FModel.ModTools.Tests/BackendTests.cs
+          rm -rf .automation/modtools-payload
+
+      - name: Commit and push actual source tree
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name 'fmodel-recreate-bot'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
