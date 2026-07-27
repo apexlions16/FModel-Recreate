@@ -17,7 +17,22 @@ An upstream update is automatically integrated only when all of the following ar
 9. The packaged `FModel-Recreate.exe --verify-runtime` process succeeds on a Windows runner.
 10. The `dev` branch has not changed while validation was running.
 
-When all gates pass, the workflow opens an integration pull request, merges it, increments the FModel-Recreate patch version, calls the stable release workflow, downloads the resulting ZIP and checksum, verifies SHA-256 and archive integrity, and confirms that the archive contains `FModel-Recreate.exe`.
+When all gates pass, the workflow opens an integration pull request, merges it, increments the FModel-Recreate patch version, and publishes **only** an automated upstream prerelease tagged `upstream-vX.Y.Z`. The resulting ZIP and checksum are downloaded again, SHA-256 and archive integrity are verified, and the archive must contain `FModel-Recreate.exe`.
+
+The upstream workflow cannot call the stable release workflow and cannot create a `vX.Y.Z` tag. Automated releases use separate `FModel-Recreate-upstream-X.Y.Z-win-x64` asset names, are marked as prereleases, and never replace GitHub's latest stable release pointer.
+
+## Stable promotion
+
+The repository owner can promote a verified `upstream-vX.Y.Z` prerelease through **Actions → Promote Upstream Release**. The promotion workflow:
+
+1. accepts only tags in the `upstream-vX.Y.Z` namespace;
+2. permits only the `apexlions16` GitHub account;
+3. verifies the source prerelease and its SHA-256 file;
+4. preserves the exact ZIP bytes;
+5. creates the corresponding stable `vX.Y.Z` release at the same source commit;
+6. downloads and verifies the promoted stable assets again.
+
+The automated prerelease remains available after promotion as a traceable record of the upstream integration.
 
 ## Upstream transport isolation
 
@@ -43,15 +58,17 @@ The editable policy is stored at `tools/upstream-sync/protected-paths.txt`. It c
 - local ImGui settings fallback;
 - FModel-Recreate update checks;
 - About/branding content;
-- QA, release, and synchronization workflows.
+- QA, stable, automated-upstream, promotion, and synchronization workflows.
 
 ## Invariant guard
 
-`tools/upstream-sync/Assert-RecreateInvariants.ps1` checks the actual source tree rather than trusting a clean Git merge. This catches non-conflicting upstream edits that could still remove or redirect FModel-Recreate features.
+`tools/upstream-sync/Assert-RecreateInvariants.ps1` checks the actual source tree rather than trusting a clean Git merge. This catches non-conflicting upstream edits that could still remove or redirect FModel-Recreate features. It also prevents stable publishing from becoming push-triggered or automation-callable and verifies that upstream releases remain prereleases in their own tag namespace.
 
 ## Versioning
 
-Safe automatic integrations increment only the patch component. For example, `0.2.1` becomes `0.2.2`. Risky/manual integrations do not change the version until a maintainer resolves and approves them.
+Safe automatic integrations increment only the patch component. For example, `0.2.1` becomes `0.2.2`, which is published as `upstream-v0.2.2`. The corresponding stable `v0.2.2` exists only after an owner-approved promotion or a separate owner-started stable build.
+
+Risky/manual integrations do not change the version until a maintainer resolves and approves them.
 
 ## Manual execution
 
