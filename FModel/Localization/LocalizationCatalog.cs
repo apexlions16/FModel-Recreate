@@ -4,8 +4,6 @@ namespace FModel.Localization;
 
 internal static class LocalizationCatalog
 {
-    public static IReadOnlyDictionary<string, string> English { get; } = BuildEnglish();
-
     public static IReadOnlyDictionary<string, string> Turkish { get; } = new Dictionary<string, string>
     {
         ["About"] = "Hakkında",
@@ -93,6 +91,8 @@ internal static class LocalizationCatalog
         ["A newer FModel-Recreate release is available. Open the GitHub release page?"] = "Daha yeni bir FModel-Recreate sürümü mevcut. GitHub sürüm sayfası açılsın mı?",
         ["Update available"] = "Güncelleme mevcut"
     };
+
+    public static IReadOnlyDictionary<string, string> English { get; } = BuildEnglish();
 
     private static IReadOnlyDictionary<string, string> BuildEnglish()
     {
