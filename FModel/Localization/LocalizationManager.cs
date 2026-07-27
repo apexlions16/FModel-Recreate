@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using FModel.Views;
 
 namespace FModel.Localization;
 
@@ -15,6 +16,8 @@ public sealed record LanguageOption(string CultureName, string DisplayName);
 
 public static class LocalizationManager
 {
+    private const string LanguageSelectorTag = "FModelRecreateLanguageSelector";
+
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Catalogs =
         new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
         {
@@ -55,7 +58,9 @@ public static class LocalizationManager
             FrameworkElement.LoadedEvent,
             new RoutedEventHandler((sender, _) =>
             {
-                if (sender is Window window) Apply(window);
+                if (sender is not Window window) return;
+                if (window is SettingsView settingsView) EnsureSettingsLanguageSelector(settingsView);
+                Apply(window);
             }));
     }
 
@@ -86,12 +91,86 @@ public static class LocalizationManager
     public static void ApplyToOpenWindows()
     {
         if (Application.Current is null) return;
-        foreach (Window window in Application.Current.Windows) Apply(window);
+        foreach (Window window in Application.Current.Windows)
+        {
+            if (window is SettingsView settingsView) EnsureSettingsLanguageSelector(settingsView);
+            Apply(window);
+        }
     }
 
     public static void Apply(DependencyObject root)
     {
         ApplyRecursive(root, new HashSet<DependencyObject>());
+    }
+
+    private static void EnsureSettingsLanguageSelector(SettingsView settingsView)
+    {
+        if (settingsView.Content is not Grid rootGrid) return;
+        if (FindByTag(rootGrid, LanguageSelectorTag) is not null) return;
+
+        var footer = rootGrid.Children
+            .OfType<Border>()
+            .FirstOrDefault(border => Grid.GetRow(border) == 1);
+        if (footer?.Child is not Grid footerGrid) return;
+
+        var label = new TextBlock
+        {
+            Text = Get("Interface Language"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+        var languageBox = new ComboBox
+        {
+            ItemsSource = AvailableLanguages,
+            DisplayMemberPath = nameof(LanguageOption.DisplayName),
+            SelectedValuePath = nameof(LanguageOption.CultureName),
+            SelectedValue = CurrentCultureName,
+            MinWidth = 125
+        };
+
+        languageBox.SelectionChanged += (_, _) =>
+        {
+            if (languageBox.SelectedItem is not LanguageOption option ||
+                option.CultureName == CurrentCultureName) return;
+
+            SetLanguage(option.CultureName);
+            label.Text = Get("Interface Language");
+        };
+
+        var panel = new StackPanel
+        {
+            Tag = LanguageSelectorTag,
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { label, languageBox }
+        };
+        Grid.SetColumn(panel, 0);
+        Panel.SetZIndex(panel, 2);
+        footerGrid.Children.Add(panel);
+    }
+
+    private static FrameworkElement FindByTag(DependencyObject root, object tag)
+    {
+        if (root is FrameworkElement element && Equals(element.Tag, tag)) return element;
+
+        var count = 0;
+        try
+        {
+            count = VisualTreeHelper.GetChildrenCount(root);
+        }
+        catch (InvalidOperationException)
+        {
+            // Some logical-only objects do not have a visual tree.
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            var found = FindByTag(VisualTreeHelper.GetChild(root, i), tag);
+            if (found is not null) return found;
+        }
+
+        return null;
     }
 
     private static void ApplyRecursive(DependencyObject current, ISet<DependencyObject> visited)
