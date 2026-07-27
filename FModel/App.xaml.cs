@@ -85,7 +85,7 @@ public partial class App
                 $"A diagnostic log was written to:\n{AppPaths.StartupCrashLog}",
                 "FModel-Recreate Startup Error",
                 MessageBoxButton.OK,
-                MessageBoxImage.Error);
+                System.Windows.MessageBoxImage.Error);
             Shutdown(-1);
         }
     }
