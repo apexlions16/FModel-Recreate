@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         run: |
           [xml]$build = Get-Content .\Directory.Build.props
-          $projectVersion = [string]($build.Project.PropertyGroup.Version | Select-Object -First 1)
+          $projectVersion = [string]($build.Project.PropertyGroup.FModelRecreateVersion | Select-Object -First 1)
           $requested = '${{ inputs.version }}'
           $version = if ([string]::IsNullOrWhiteSpace($requested)) { $projectVersion } else { $requested }
           if ($version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') { throw "Invalid semantic version: $version" }
