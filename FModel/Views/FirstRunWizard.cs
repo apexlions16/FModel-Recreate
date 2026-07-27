@@ -12,14 +12,19 @@ public sealed class FirstRunWizard : Window
     private readonly TextBlock _description;
     private readonly TextBlock _languageLabel;
     private readonly Button _continueButton;
+    private readonly ShutdownMode _previousShutdownMode;
 
     public FirstRunWizard()
     {
+        _previousShutdownMode = Application.Current.ShutdownMode;
+        Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
         Title = Constants.APP_NAME;
         Width = 560;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Closed += OnClosed;
 
         _title = new TextBlock
         {
@@ -72,6 +77,14 @@ public sealed class FirstRunWizard : Window
         };
 
         RefreshText();
+    }
+
+    private void OnClosed(object sender, EventArgs e)
+    {
+        if (ReferenceEquals(Application.Current.MainWindow, this))
+            Application.Current.MainWindow = null;
+
+        Application.Current.ShutdownMode = _previousShutdownMode;
     }
 
     private void RefreshText()
