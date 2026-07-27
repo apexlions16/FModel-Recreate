@@ -1,0 +1,70 @@
+name: Smoke Test Current Upstream
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - '.github/workflows/smoke-current-upstream.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fetch and dry-run current upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'fmodel-recreate-smoke-test'
+          git config user.email 'actions@users.noreply.github.com'
+          git remote add upstream https://github.com/4sval/FModel.git
+          git fetch upstream dev --tags --prune
+
+          UPSTREAM_SHA=$(git rev-parse upstream/dev)
+          MERGE_BASE=$(git merge-base HEAD upstream/dev)
+          git diff --name-only "$MERGE_BASE..$UPSTREAM_SHA" > current-upstream-files.txt
+          echo "UpstreamSHA=$UPSTREAM_SHA"
+          echo "MergeBase=$MERGE_BASE"
+          echo "ChangedFiles=$(wc -l < current-upstream-files.txt)"
+
+          pwsh -NoProfile -File ./tools/upstream-sync/Get-UpstreamRisk.ps1 `
+            -ChangedFilesPath current-upstream-files.txt `
+            -ReportPath current-upstream-risk.md
+          cat current-upstream-risk.md
+
+          set +e
+          git merge --no-ff --no-commit upstream/dev
+          MERGE_EXIT=$?
+          set -e
+
+          if [[ $MERGE_EXIT -ne 0 ]]; then
+            git diff --name-only --diff-filter=U > current-upstream-conflicts.txt
+            echo "ConflictCount=$(wc -l < current-upstream-conflicts.txt)"
+            echo 'Conflicts:'
+            cat current-upstream-conflicts.txt
+            git merge --abort
+          else
+            : > current-upstream-conflicts.txt
+            echo 'ConflictCount=0'
+            pwsh -NoProfile -File ./tools/upstream-sync/Assert-RecreateInvariants.ps1
+            git reset --hard HEAD
+          fi
+
+      - name: Upload dry-run report
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-upstream-smoke-${{ github.sha }}
+          path: |
+            current-upstream-files.txt
+            current-upstream-risk.md
+            current-upstream-conflicts.txt
+          if-no-files-found: error
+          retention-days: 7
