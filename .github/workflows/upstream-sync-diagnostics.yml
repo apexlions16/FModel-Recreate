@@ -1,0 +1,39 @@
+name: Upstream Sync Script Diagnostics
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - '.github/workflows/upstream-sync-diagnostics.yml'
+      - '.github/workflows/upstream-sync.yml'
+      - 'tools/upstream-sync/**'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run script tests
+        id: tests
+        continue-on-error: true
+        shell: pwsh
+        run: ./tools/upstream-sync/Test-SyncScripts.ps1
+
+      - name: Upload script diagnostics
+        if: steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-sync-script-diagnostics-${{ github.sha }}
+          path: upstream-sync-test-error.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stop after script failure
+        if: steps.tests.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Upstream sync script tests failed.'
