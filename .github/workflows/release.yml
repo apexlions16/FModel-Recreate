@@ -1,39 +1,14 @@
-name: FModel-Recreate Release
+name: FModel-Recreate Stable Release
 
 on:
-  push:
-    branches: [dev]
-    paths:
-      - Directory.Build.props
   workflow_dispatch:
     inputs:
       version:
-        description: Semantic version without the v prefix (for example 0.2.0)
+        description: Semantic version without the v prefix; leave empty to use Directory.Build.props
         required: false
         type: string
-      prerelease:
-        description: Publish as a prerelease
-        required: false
-        default: false
-        type: boolean
       ref:
-        description: Git ref to build
-        required: false
-        default: dev
-        type: string
-  workflow_call:
-    inputs:
-      version:
-        description: Semantic version without the v prefix
-        required: false
-        type: string
-      prerelease:
-        description: Publish as a prerelease
-        required: false
-        default: false
-        type: boolean
-      ref:
-        description: Git ref to build
+        description: Git ref to build for the stable release
         required: false
         default: dev
         type: string
@@ -49,10 +24,17 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
+      - name: Authorize stable publication
+        shell: pwsh
+        run: |
+          if ('${{ github.actor }}' -ne 'apexlions16') {
+            throw 'Stable releases may only be published by the repository owner, apexlions16.'
+          }
+
       - name: Checkout with submodules
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || 'dev' }}
           submodules: recursive
           fetch-depth: 0
 
@@ -75,7 +57,7 @@ jobs:
           "numeric_version=$numericVersion" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
 
-      - name: Check for an existing release
+      - name: Check for an existing stable release
         id: existing
         shell: pwsh
         env:
@@ -92,6 +74,11 @@ jobs:
       - name: Restore
         if: steps.existing.outputs.exists != 'true'
         run: dotnet restore .\FModel\FModel.csproj -r win-x64
+
+      - name: Audit NuGet dependencies
+        if: steps.existing.outputs.exists != 'true'
+        shell: pwsh
+        run: dotnet list .\FModel\FModel.csproj package --vulnerable --include-transitive
 
       - name: Build
         if: steps.existing.outputs.exists != 'true'
@@ -110,7 +97,7 @@ jobs:
         if: steps.existing.outputs.exists != 'true'
         shell: pwsh
         run: |
-          $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Release-Verification'
+          $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Stable-Verification'
           Remove-Item $verificationRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
 
@@ -122,12 +109,12 @@ jobs:
           $process = Start-Process .\artifacts\publish\FModel-Recreate.exe -ArgumentList '--verify-runtime' -PassThru
           if (!$process.WaitForExit(30000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            throw 'Release executable did not finish runtime verification within 30 seconds.'
+            throw 'Stable executable did not finish runtime verification within 30 seconds.'
           }
 
           if ($process.ExitCode -ne 0) {
             if (Test-Path $startupLog) { Get-Content $startupLog }
-            throw "Release executable failed runtime verification with exit code $($process.ExitCode)."
+            throw "Stable executable failed runtime verification with exit code $($process.ExitCode)."
           }
 
           if (!(Test-Path $marker)) { throw 'Runtime verification marker was not created.' }
@@ -140,7 +127,7 @@ jobs:
           Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath ".\artifacts\$name.zip" -Force
           (Get-FileHash ".\artifacts\$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Set-Content ".\artifacts\$name.sha256"
 
-      - name: Create GitHub release
+      - name: Create stable GitHub release
         if: steps.existing.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
@@ -148,12 +135,12 @@ jobs:
           name: FModel-Recreate ${{ steps.version.outputs.tag }}
           target_commitish: ${{ inputs.ref || 'dev' }}
           generate_release_notes: true
-          prerelease: ${{ inputs.prerelease || false }}
+          prerelease: false
           make_latest: true
           body: |
-            Self-contained Windows x64 release. A separate .NET installation is not required.
+            Owner-authorized stable Windows x64 release. A separate .NET installation is not required.
 
-            The published executable passed the Windows runtime verification gate before this release was created. See the generated commit history for the complete list of fixes and changes.
+            This release was started manually by `apexlions16`. The published executable passed dependency audit, build, and Windows runtime verification before publication.
           files: |
             artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.zip
             artifacts/FModel-Recreate-${{ steps.version.outputs.version }}-win-x64.sha256
