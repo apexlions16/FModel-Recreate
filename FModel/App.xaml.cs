@@ -84,7 +84,7 @@ public partial class App
                 $"FModel-Recreate could not start.\n\n{exception.GetBaseException().GetType().Name}: {exception.GetBaseException().Message}\n\n" +
                 $"A diagnostic log was written to:\n{AppPaths.StartupCrashLog}",
                 "FModel-Recreate Startup Error",
-                MessageBoxButton.OK,
+                System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
             Shutdown(-1);
         }
