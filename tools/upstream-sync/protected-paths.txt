@@ -1,0 +1,24 @@
+# Any upstream change matching one of these paths requires manual review.
+# Wildcards use PowerShell -like semantics.
+.github/workflows/*
+.gitmodules
+Directory.Build.props
+Directory.Build.targets
+FModel/App.xaml
+FModel/App.xaml.cs
+FModel/AppPaths.cs
+FModel/Constants.cs
+FModel/GlobalUsings.Recreate.cs
+FModel/Localization/*
+FModel/Services/GitHubUpdateService.cs
+FModel/Settings/SettingsStorage.cs
+FModel/Settings/UserSettings.cs
+FModel/ViewModels/ApplicationViewModel.cs
+FModel/ViewModels/ApiEndpointViewModel.cs
+FModel/ViewModels/ApiEndpoints/FModelApiEndpoint.cs
+FModel/ViewModels/AboutViewModel.cs
+FModel/Views/About.xaml
+FModel/Views/About.xaml.cs
+FModel/Views/FirstRunWizard.cs
+README.md
+BRANDING.md

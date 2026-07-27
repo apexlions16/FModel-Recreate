@@ -1,0 +1,437 @@
+name: Upstream FModel Sync
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_manual_review:
+        description: Create a review PR even when the update is otherwise safe
+        required: false
+        default: false
+        type: boolean
+  pull_request:
+    branches: [dev]
+    paths:
+      - '.github/workflows/upstream-sync.yml'
+      - '.github/workflows/release.yml'
+      - 'tools/upstream-sync/**'
+      - 'UPSTREAM_SYNC.md'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: upstream-fmodel-sync
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: https://github.com/4sval/FModel.git
+  UPSTREAM_BRANCH: dev
+
+jobs:
+  validate-automation:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Test sync policy and guards
+        shell: pwsh
+        run: ./tools/upstream-sync/Test-SyncScripts.ps1
+
+  prepare:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      update: ${{ steps.detect.outputs.update }}
+      base_sha: ${{ steps.detect.outputs.base_sha }}
+      upstream_sha: ${{ steps.detect.outputs.upstream_sha }}
+      branch: ${{ steps.detect.outputs.branch }}
+      high_risk: ${{ steps.risk.outputs.high_risk }}
+      conflicts: ${{ steps.integrate.outputs.conflicts }}
+      safe_candidate: ${{ steps.policy.outputs.safe_candidate }}
+      next_version: ${{ steps.policy.outputs.next_version }}
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+    steps:
+      - name: Checkout dev with full history
+        uses: actions/checkout@v6
+        with:
+          ref: dev
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Configure integration identity
+        shell: bash
+        run: |
+          git config user.name 'fmodel-recreate-bot'
+          git config user.email 'actions@users.noreply.github.com'
+
+      - name: Detect upstream update
+        id: detect
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git remote add upstream "$UPSTREAM_REPOSITORY" 2>/dev/null || git remote set-url upstream "$UPSTREAM_REPOSITORY"
+          git fetch upstream "$UPSTREAM_BRANCH" --tags --prune
+
+          BASE_SHA=$(git rev-parse HEAD)
+          UPSTREAM_REF="upstream/$UPSTREAM_BRANCH"
+          UPSTREAM_SHA=$(git rev-parse "$UPSTREAM_REF")
+          SHORT_SHA=${UPSTREAM_SHA:0:12}
+          BRANCH="automation/upstream-$SHORT_SHA"
+
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+          if git merge-base --is-ancestor "$UPSTREAM_SHA" HEAD; then
+            echo 'update=false' >> "$GITHUB_OUTPUT"
+            echo 'Upstream dev is already contained in FModel-Recreate dev.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          EXISTING_PR=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [[ -n "$EXISTING_PR" ]]; then
+            echo 'update=false' >> "$GITHUB_OUTPUT"
+            echo "An integration PR already exists for upstream $UPSTREAM_SHA: #$EXISTING_PR" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          MERGE_BASE=$(git merge-base HEAD "$UPSTREAM_REF")
+          git diff --name-only "$MERGE_BASE..$UPSTREAM_SHA" > upstream-files.txt
+          echo 'update=true' >> "$GITHUB_OUTPUT"
+          echo "Detected upstream commit $UPSTREAM_SHA with $(wc -l < upstream-files.txt) changed files." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Classify upstream risk
+        if: steps.detect.outputs.update == 'true'
+        id: risk
+        shell: pwsh
+        run: |
+          ./tools/upstream-sync/Get-UpstreamRisk.ps1 `
+            -ChangedFilesPath upstream-files.txt `
+            -ReportPath upstream-risk.md `
+            -GitHubOutput $env:GITHUB_OUTPUT
+
+      - name: Merge upstream into an integration branch
+        if: steps.detect.outputs.update == 'true'
+        id: integrate
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH='${{ steps.detect.outputs.branch }}'
+          UPSTREAM_REF="upstream/$UPSTREAM_BRANCH"
+          git switch -c "$BRANCH"
+
+          set +e
+          git merge --no-ff --no-commit "$UPSTREAM_REF"
+          MERGE_EXIT=$?
+          set -e
+
+          CONFLICTS=false
+          if [[ $MERGE_EXIT -ne 0 ]]; then
+            git diff --name-only --diff-filter=U > upstream-conflicts.txt
+            if [[ ! -s upstream-conflicts.txt ]]; then
+              echo 'The upstream merge failed without resolvable file conflicts.' >&2
+              exit $MERGE_EXIT
+            fi
+
+            CONFLICTS=true
+            while IFS= read -r path; do
+              [[ -z "$path" ]] && continue
+              git checkout --ours -- "$path"
+              git add -- "$path"
+            done < upstream-conflicts.txt
+          else
+            : > upstream-conflicts.txt
+          fi
+
+          git commit -m "chore: integrate upstream FModel ${{ steps.detect.outputs.upstream_sha }}"
+          echo "conflicts=$CONFLICTS" >> "$GITHUB_OUTPUT"
+          echo "conflict_count=$(wc -l < upstream-conflicts.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify FModel-Recreate invariants
+        if: steps.detect.outputs.update == 'true'
+        id: guard
+        continue-on-error: true
+        shell: pwsh
+        run: ./tools/upstream-sync/Assert-RecreateInvariants.ps1
+
+      - name: Decide automatic merge policy and version
+        if: steps.detect.outputs.update == 'true'
+        id: policy
+        shell: bash
+        env:
+          FORCE_MANUAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_manual_review || false }}
+        run: |
+          set -euo pipefail
+          SAFE=true
+          if [[ '${{ steps.risk.outputs.high_risk }}' == 'true' ]]; then SAFE=false; fi
+          if [[ '${{ steps.integrate.outputs.conflicts }}' == 'true' ]]; then SAFE=false; fi
+          if [[ '${{ steps.guard.outcome }}' != 'success' ]]; then SAFE=false; fi
+          if [[ "$FORCE_MANUAL" == 'true' ]]; then SAFE=false; fi
+
+          NEXT_VERSION=''
+          if [[ "$SAFE" == 'true' ]]; then
+            NEXT_VERSION=$(pwsh -NoProfile -File ./tools/upstream-sync/Bump-RecreatePatchVersion.ps1 | tail -n 1 | tr -d '\r')
+            git add Directory.Build.props
+            git commit -m "chore: prepare FModel-Recreate v$NEXT_VERSION"
+          fi
+
+          echo "safe_candidate=$SAFE" >> "$GITHUB_OUTPUT"
+          echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Push integration branch
+        if: steps.detect.outputs.update == 'true'
+        shell: bash
+        run: git push --set-upstream origin '${{ steps.detect.outputs.branch }}'
+
+      - name: Open integration pull request
+        if: steps.detect.outputs.update == 'true'
+        id: pr
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SAFE='${{ steps.policy.outputs.safe_candidate }}'
+          UPSTREAM_SHA='${{ steps.detect.outputs.upstream_sha }}'
+          BRANCH='${{ steps.detect.outputs.branch }}'
+
+          {
+            echo '## Automated upstream integration'
+            echo
+            echo "- Upstream: [4sval/FModel@${UPSTREAM_SHA:0:12}](https://github.com/4sval/FModel/commit/$UPSTREAM_SHA)"
+            echo "- Automatic merge candidate: $SAFE"
+            echo "- Merge conflicts staged with our side: ${{ steps.integrate.outputs.conflict_count }}"
+            echo "- Proposed FModel-Recreate version: ${{ steps.policy.outputs.next_version }}"
+            echo
+            cat upstream-risk.md
+            echo
+            echo '## Upstream files'
+            echo '```text'
+            head -n 120 upstream-files.txt
+            if [[ $(wc -l < upstream-files.txt) -gt 120 ]]; then echo '...'; fi
+            echo '```'
+            if [[ -s upstream-conflicts.txt ]]; then
+              echo
+              echo '## Conflicts requiring human review'
+              echo '```text'
+              cat upstream-conflicts.txt
+              echo '```'
+            fi
+            echo
+            echo 'The branch is built and the packaged Windows executable is executed before any automatic merge. Protected-path changes, conflicts, failed invariants, failed builds, or concurrent dev changes block automatic publication.'
+          } > upstream-pr-body.md
+
+          TITLE="Sync upstream FModel ${UPSTREAM_SHA:0:12}"
+          ARGS=(--repo "$GITHUB_REPOSITORY" --base dev --head "$BRANCH" --title "$TITLE" --body-file upstream-pr-body.md)
+          if [[ "$SAFE" != 'true' ]]; then ARGS+=(--draft); fi
+          PR_URL=$(gh pr create "${ARGS[@]}")
+          PR_NUMBER=$(gh pr view "$PR_URL" --repo "$GITHUB_REPOSITORY" --json number --jq .number)
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Opened upstream integration PR #$PR_NUMBER." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload integration report
+        if: steps.detect.outputs.update == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-integration-${{ steps.detect.outputs.upstream_sha }}
+          path: |
+            upstream-files.txt
+            upstream-risk.md
+            upstream-conflicts.txt
+            upstream-pr-body.md
+          if-no-files-found: error
+          retention-days: 30
+
+  validate:
+    needs: prepare
+    if: needs.prepare.outputs.update == 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout integration branch with submodules
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.branch }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test sync scripts and invariants
+        shell: pwsh
+        run: ./tools/upstream-sync/Test-SyncScripts.ps1
+
+      - name: Verify submodules
+        shell: pwsh
+        run: |
+          git submodule status --recursive
+          if ((git submodule status --recursive) -match '^[-+]') { throw 'Invalid submodule state.' }
+
+      - name: Restore
+        run: dotnet restore .\FModel\FModel.csproj -r win-x64
+
+      - name: Audit NuGet dependencies
+        shell: pwsh
+        run: dotnet list .\FModel\FModel.csproj package --vulnerable --include-transitive
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          dotnet build .\FModel\FModel.csproj -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload compiler diagnostics
+        if: steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-compiler-diagnostics-${{ needs.prepare.outputs.upstream_sha }}
+          path: build.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Stop after compiler failure
+        if: steps.build.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Compilation failed.'
+
+      - name: Publish self-contained executable
+        run: dotnet publish .\FModel\FModel.csproj -c Release --no-restore --self-contained true -r win-x64 -f net10.0-windows -o .\artifacts\publish -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
+
+      - name: Prepare branded executable
+        shell: pwsh
+        run: Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
+
+      - name: Verify published runtime
+        id: runtime
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $verificationRoot = Join-Path $env:RUNNER_TEMP 'FModel-Recreate-Upstream-Verification'
+          Remove-Item $verificationRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
+          $marker = Join-Path $verificationRoot 'runtime-verification.complete'
+          $startupLog = Join-Path $verificationRoot 'startup-crash.log'
+          $env:FMODEL_RECREATE_RUNTIME_MARKER = $marker
+          $env:FMODEL_RECREATE_STARTUP_LOG = $startupLog
+
+          $process = Start-Process .\artifacts\publish\FModel-Recreate.exe -ArgumentList '--verify-runtime' -PassThru
+          if (!$process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'Published executable did not finish runtime verification within 30 seconds.'
+          }
+          if ($process.ExitCode -ne 0) {
+            if (Test-Path $startupLog) { Get-Content $startupLog }
+            throw "Published executable failed runtime verification with exit code $($process.ExitCode)."
+          }
+          if (!(Test-Path $marker)) { throw 'Runtime verification marker was not created.' }
+
+      - name: Upload runtime diagnostics
+        if: steps.runtime.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-runtime-diagnostics-${{ needs.prepare.outputs.upstream_sha }}
+          path: ${{ runner.temp }}/FModel-Recreate-Upstream-Verification
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop after runtime failure
+        if: steps.runtime.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Published executable runtime verification failed.'
+
+  finalize:
+    needs: [prepare, validate]
+    if: always() && needs.prepare.outputs.update == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+    steps:
+      - name: Record validation or policy block
+        if: needs.validate.result != 'success' || needs.prepare.outputs.safe_candidate != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ '${{ needs.validate.result }}' != 'success' ]]; then
+            MESSAGE='Automatic merge was blocked because Windows build or packaged runtime validation failed. Review the workflow artifacts and update this PR manually.'
+          else
+            MESSAGE='Automatic merge was intentionally blocked by the protected-path, conflict, invariant, size, or forced-review policy. The upstream changes are staged in this draft PR for human integration.'
+          fi
+          gh pr comment '${{ needs.prepare.outputs.pr_number }}' --repo "$GITHUB_REPOSITORY" --body "$MESSAGE"
+
+      - name: Merge verified safe integration
+        id: merge
+        if: needs.validate.result == 'success' && needs.prepare.outputs.safe_candidate == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_DEV=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq .object.sha)
+          if [[ "$CURRENT_DEV" != '${{ needs.prepare.outputs.base_sha }}' ]]; then
+            gh pr comment '${{ needs.prepare.outputs.pr_number }}' --repo "$GITHUB_REPOSITORY" --body 'Automatic merge was blocked because dev changed while this upstream update was being validated. Re-run the sync workflow against the new dev head.'
+            echo 'merged=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh pr merge '${{ needs.prepare.outputs.pr_number }}' --repo "$GITHUB_REPOSITORY" --merge --admin --delete-branch
+          echo 'merged=true' >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: [prepare, validate, finalize]
+    if: needs.finalize.outputs.merged == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.prepare.outputs.next_version }}
+      prerelease: false
+      ref: dev
+    secrets: inherit
+
+  verify-release:
+    needs: [prepare, finalize, release]
+    if: needs.finalize.outputs.merged == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify published release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.next_version }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          ZIP="FModel-Recreate-$VERSION-win-x64.zip"
+          CHECKSUM="FModel-Recreate-$VERSION-win-x64.sha256"
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets > release.json
+          jq -e --arg zip "$ZIP" --arg sum "$CHECKSUM" '
+            .tagName == "v'"$VERSION"'" and
+            .isDraft == false and
+            ([.assets[].name] | index($zip)) != null and
+            ([.assets[].name] | index($sum)) != null
+          ' release.json > /dev/null
+
+          mkdir release-assets
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ZIP" --pattern "$CHECKSUM" --dir release-assets
+          cd release-assets
+          sha256sum -c "$CHECKSUM"
+          unzip -t "$ZIP"
+          unzip -l "$ZIP" | grep -q 'FModel-Recreate.exe'
+          cd ..
+
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Automatically merged the verified upstream update and published FModel-Recreate $TAG. The release ZIP, SHA-256 file, archive integrity, and packaged executable entry were verified."

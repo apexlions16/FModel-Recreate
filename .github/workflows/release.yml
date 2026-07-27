@@ -16,6 +16,27 @@ on:
         required: false
         default: false
         type: boolean
+      ref:
+        description: Git ref to build
+        required: false
+        default: dev
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        description: Semantic version without the v prefix
+        required: false
+        type: string
+      prerelease:
+        description: Publish as a prerelease
+        required: false
+        default: false
+        type: boolean
+      ref:
+        description: Git ref to build
+        required: false
+        default: dev
+        type: string
 
 permissions:
   contents: write
@@ -31,6 +52,7 @@ jobs:
       - name: Checkout with submodules
         uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
           fetch-depth: 0
 
@@ -124,7 +146,7 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: FModel-Recreate ${{ steps.version.outputs.tag }}
-          target_commitish: dev
+          target_commitish: ${{ inputs.ref || 'dev' }}
           generate_release_notes: true
           prerelease: ${{ inputs.prerelease || false }}
           make_latest: true
