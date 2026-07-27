@@ -24,6 +24,9 @@ namespace FModel;
 /// </summary>
 public partial class App
 {
+    private const string RuntimeMarkerEnvironmentVariable = "FMODEL_RECREATE_RUNTIME_MARKER";
+    private const string StartupLogEnvironmentVariable = "FMODEL_RECREATE_STARTUP_LOG";
+
     [DllImport("kernel32.dll")]
     private static extern bool AttachConsole(int dwProcessId);
 
@@ -101,11 +104,19 @@ public partial class App
 
     private static void VerifyRuntimeBundle()
     {
-        Directory.CreateDirectory(AppPaths.AppDataDirectory);
         _ = Current.FindResource("BoolToVisibilityConverter");
         _ = typeof(FirstRunWizard).Assembly.GetName().Name;
         _ = new System.Windows.Controls.TextBlock { Text = Constants.APP_NAME };
-        File.WriteAllText(AppPaths.RuntimeVerificationMarker, DateTimeOffset.UtcNow.ToString("O"));
+
+        var markerPath = Environment.GetEnvironmentVariable(RuntimeMarkerEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(markerPath))
+            markerPath = AppPaths.RuntimeVerificationMarker;
+
+        var markerDirectory = Path.GetDirectoryName(markerPath);
+        if (!string.IsNullOrWhiteSpace(markerDirectory))
+            Directory.CreateDirectory(markerDirectory);
+
+        File.WriteAllText(markerPath, DateTimeOffset.UtcNow.ToString("O"));
     }
 
     private static void InitializeApplicationDirectories()
@@ -196,10 +207,15 @@ public partial class App
     {
         try
         {
-            Directory.CreateDirectory(AppPaths.AppDataDirectory);
-            File.AppendAllText(
-                AppPaths.StartupCrashLog,
-                $"[{DateTimeOffset.Now:O}] {exception}\n\n");
+            var logPath = Environment.GetEnvironmentVariable(StartupLogEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(logPath))
+                logPath = AppPaths.StartupCrashLog;
+
+            var logDirectory = Path.GetDirectoryName(logPath);
+            if (!string.IsNullOrWhiteSpace(logDirectory))
+                Directory.CreateDirectory(logDirectory);
+
+            File.AppendAllText(logPath, $"[{DateTimeOffset.Now:O}] {exception}\n\n");
         }
         catch
         {
