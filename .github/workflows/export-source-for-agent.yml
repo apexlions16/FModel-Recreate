@@ -18,18 +18,23 @@ jobs:
         run: |
           set -euo pipefail
           curl -L --fail --retry 3 -o repak.tar.xz https://github.com/trumank/repak/releases/download/v0.2.3/repak_cli-x86_64-unknown-linux-gnu.tar.xz
+          tar -tvf repak.tar.xz | tee repak-archive.txt
           tar -xf repak.tar.xz
-          chmod +x repak
+          REPAK_PATH=$(find . -maxdepth 3 -type f -name 'repak*' ! -name '*.txt' ! -name '*.xz' | head -n 1)
+          if [[ -z "$REPAK_PATH" ]]; then echo 'repak executable not found' >&2; exit 1; fi
+          chmod +x "$REPAK_PATH"
+          cp "$REPAK_PATH" ./repak-bin
 
       - name: Capture command help
         shell: bash
         run: |
           set -euo pipefail
-          ./repak --version | tee repak-version.txt
-          ./repak --help | tee repak-help.txt
-          ./repak pack --help | tee repak-pack-help.txt
-          ./repak list --help | tee repak-list-help.txt
-          ./repak info --help | tee repak-info-help.txt
+          ./repak-bin --version | tee repak-version.txt
+          ./repak-bin --help | tee repak-help.txt
+          ./repak-bin pack --help | tee repak-pack-help.txt
+          ./repak-bin list --help | tee repak-list-help.txt
+          ./repak-bin info --help | tee repak-info-help.txt
+          ./repak-bin unpack --help | tee repak-unpack-help.txt
 
       - name: Synthetic pack/list/unpack smoke test
         shell: bash
@@ -37,25 +42,28 @@ jobs:
           set -euo pipefail
           mkdir -p input/Game/Content/Test
           printf 'FModel-Recreate repak smoke test\n' > input/Game/Content/Test/Smoke.txt
-          ./repak pack input smoke_P.pak
-          ./repak info smoke_P.pak | tee repak-info-output.txt
-          ./repak list smoke_P.pak | tee repak-list-output.txt
+          ./repak-bin pack input smoke_P.pak
+          ./repak-bin info smoke_P.pak | tee repak-info-output.txt
+          ./repak-bin list smoke_P.pak | tee repak-list-output.txt
           mkdir unpacked
-          ./repak unpack smoke_P.pak --output unpacked
+          ./repak-bin unpack smoke_P.pak --output unpacked
           cmp input/Game/Content/Test/Smoke.txt unpacked/Game/Content/Test/Smoke.txt
 
       - name: Upload inspection report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: repak-cli-inspection-${{ github.sha }}
           path: |
+            repak-archive.txt
             repak-version.txt
             repak-help.txt
             repak-pack-help.txt
             repak-list-help.txt
             repak-info-help.txt
+            repak-unpack-help.txt
             repak-info-output.txt
             repak-list-output.txt
             smoke_P.pak
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 1
