@@ -79,7 +79,12 @@ jobs:
           $env:APPDATA = Join-Path $verificationRoot 'AppData'
           New-Item -ItemType Directory -Path $env:APPDATA -Force | Out-Null
 
-          $process = Start-Process .\artifacts\publish\FModel-Recreate.exe -ArgumentList '--verify-runtime' -PassThru -Wait
+          $process = Start-Process .\artifacts\publish\FModel-Recreate.exe -ArgumentList '--verify-runtime' -PassThru
+          if (!$process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw 'Published executable did not finish runtime verification within 30 seconds.'
+          }
+
           if ($process.ExitCode -ne 0) {
             $crashLog = Join-Path $env:APPDATA 'FModel-Recreate\startup-crash.log'
             if (Test-Path $crashLog) { Get-Content $crashLog }
