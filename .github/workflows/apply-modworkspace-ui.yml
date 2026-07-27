@@ -1,0 +1,55 @@
+name: Apply Mod Workspace UI Payload
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - '.automation/modworkspace-ui/**'
+      - '.github/workflows/apply-modworkspace-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'agent/ue4-mod-workspace-core' && github.actor == 'apexlions16'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Verify UI payload bytes and archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHUNK_COUNT=$(find .automation/modworkspace-ui -maxdepth 1 -type f -name 'chunk-*' | wc -l)
+          [[ "$CHUNK_COUNT" -eq 1 ]]
+          cat .automation/modworkspace-ui/chunk-* | base64 -d > /tmp/modworkspace-ui.tar.gz
+          [[ $(wc -c < /tmp/modworkspace-ui.tar.gz) -eq 29383 ]]
+          echo 'e26254529bcb3ff06a00754c46dd8cb2f53287ae6fbcf8841f1cea73d6b03576  /tmp/modworkspace-ui.tar.gz' | sha256sum -c -
+          tar -tzf /tmp/modworkspace-ui.tar.gz | tee /tmp/modworkspace-ui-files.txt
+
+      - name: Extract UI source payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -xzf /tmp/modworkspace-ui.tar.gz -C .
+          test -f FModel/Services/ModWorkspaceService.cs
+          test -f FModel/ViewModels/ModWorkspaceViewModel.cs
+          test -f FModel/Views/ModWorkspace.xaml
+          test -f FModel/Views/LocResEditor.xaml
+          test -f MOD_WORKSPACE.md
+          rm -rf .automation/modworkspace-ui
+
+      - name: Commit and push actual UI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'fmodel-recreate-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: add FModel Mod Workspace interface'
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
