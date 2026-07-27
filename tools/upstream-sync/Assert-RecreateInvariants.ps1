@@ -81,6 +81,11 @@ Require-Pattern '.github/workflows/release.yml' '--self-contained true' 'self-co
 Require-Pattern '.github/workflows/release.yml' 'Verify published runtime' 'stable release execution of the packaged executable'
 Require-Pattern '.github/workflows/release.yml' 'softprops/action-gh-release' 'GitHub Release publication'
 
+Require-Pattern '.github/workflows/upstream-sync.yml' 'persist-credentials:\s*false' 'fork credential isolation before public upstream fetches'
+Require-Pattern '.github/workflows/upstream-sync.yml' 'git fetch --no-tags upstream' 'branch-only upstream fetching without conflicting release tags'
+Require-Pattern '.github/workflows/upstream-sync.yml' 'gh auth setup-git' 'delayed authentication before pushing the integration branch'
+Require-Pattern '.github/workflows/upstream-sync.yml' 'Smoke-test public upstream fetch' 'a live upstream fetch check on workflow changes'
+
 if ($failures.Count -gt 0) {
     $message = "FModel-Recreate invariant guard failed:`n- " + ($failures -join "`n- ")
     throw $message
