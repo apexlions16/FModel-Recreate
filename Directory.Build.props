@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'FModel'">
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <AssemblyName>FModel-Recreate</AssemblyName>
+    <Product>FModel-Recreate</Product>
+    <AssemblyTitle>FModel-Recreate</AssemblyTitle>
+    <Description>An Unreal Engine archive explorer and future modding workspace based on FModel and CUE4Parse.</Description>
+    <Authors>apexlions16 and FModel contributors</Authors>
+    <Company>FModel-Recreate</Company>
+    <RepositoryUrl>https://github.com/apexlions16/FModel-Recreate</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/apexlions16/FModel-Recreate</PackageProjectUrl>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <InformationalVersion>$(Version)+$(SourceRevisionId)</InformationalVersion>
+  </PropertyGroup>
+</Project>
