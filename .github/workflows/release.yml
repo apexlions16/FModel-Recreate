@@ -33,12 +33,10 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
-
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-
       - name: Resolve and validate version
         id: version
         shell: pwsh
@@ -52,7 +50,6 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "numeric_version=$numericVersion" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
-
       - name: Check for an existing release
         id: existing
         shell: pwsh
@@ -66,19 +63,15 @@ jobs:
             "exists=false" >> $env:GITHUB_OUTPUT
             exit 0
           }
-
       - name: Restore
         if: steps.existing.outputs.exists != 'true'
-        run: dotnet restore .\FModel\FModel.slnx -r win-x64
-
+        run: dotnet restore .\FModel\FModel.csproj -r win-x64
       - name: Build
         if: steps.existing.outputs.exists != 'true'
-        run: dotnet build .\FModel\FModel.slnx -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true
-
+        run: dotnet build .\FModel\FModel.csproj -c Release -r win-x64 --no-restore -p:ContinuousIntegrationBuild=true
       - name: Publish
         if: steps.existing.outputs.exists != 'true'
         run: dotnet publish .\FModel\FModel.csproj -c Release --no-restore --no-self-contained -r win-x64 -f net10.0-windows -o .\artifacts\publish -p:PublishReadyToRun=false -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:Version=${{ steps.version.outputs.version }} -p:FileVersion=${{ steps.version.outputs.numeric_version }} -p:AssemblyVersion=${{ steps.version.outputs.numeric_version }}
-
       - name: Package and checksum
         if: steps.existing.outputs.exists != 'true'
         shell: pwsh
@@ -87,7 +80,6 @@ jobs:
           Copy-Item .\artifacts\publish\FModel.exe .\artifacts\publish\FModel-Recreate.exe -Force
           Compress-Archive -Path .\artifacts\publish\FModel-Recreate.exe -DestinationPath ".\artifacts\$name.zip" -Force
           (Get-FileHash ".\artifacts\$name.zip" -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Set-Content ".\artifacts\$name.sha256"
-
       - name: Create GitHub release
         if: steps.existing.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
