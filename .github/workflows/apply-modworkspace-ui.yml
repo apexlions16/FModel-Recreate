@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: apply-modworkspace-ui-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   apply:
     if: github.event.pull_request.head.ref == 'agent/ue4-mod-workspace-core' && github.actor == 'apexlions16'
@@ -21,73 +25,87 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Decode and validate archive
+      - name: Verify payload chunks and archive
         shell: bash
         run: |
           set -euo pipefail
-          CHUNK_COUNT=$(find .automation/modworkspace-ui -maxdepth 1 -type f -name 'chunk-*' | wc -l)
-          [[ "$CHUNK_COUNT" -eq 1 ]]
-          cat .automation/modworkspace-ui/chunk-* | base64 -d > /tmp/modworkspace-ui.tar.gz
-          tar -tzf /tmp/modworkspace-ui.tar.gz > /tmp/archive-files.txt
-          [[ -s /tmp/archive-files.txt ]]
+          mapfile -t CHUNKS < <(find .automation/modworkspace-ui -maxdepth 1 -type f -name 'chunk-*' | sort)
+          [[ "${#CHUNKS[@]}" -eq 6 ]]
+          printf '%s\n' "${CHUNKS[@]}"
+          [[ $(wc -c < "${CHUNKS[0]}") -eq 8000 ]]
+          [[ $(wc -c < "${CHUNKS[1]}") -eq 8000 ]]
+          [[ $(wc -c < "${CHUNKS[2]}") -eq 8000 ]]
+          [[ $(wc -c < "${CHUNKS[3]}") -eq 8000 ]]
+          [[ $(wc -c < "${CHUNKS[4]}") -eq 8000 ]]
+          [[ $(wc -c < "${CHUNKS[5]}") -eq 1180 ]]
+          cat "${CHUNKS[@]}" | base64 -d > /tmp/modworkspace-ui.tar.gz
+          [[ $(wc -c < /tmp/modworkspace-ui.tar.gz) -eq 30883 ]]
+          echo 'a4ab402128abc222575009e0f60dad336484418048aa24830fbe405469d2e5dd  /tmp/modworkspace-ui.tar.gz' | sha256sum -c -
+          tar -tzf /tmp/modworkspace-ui.tar.gz | sort | tee /tmp/modworkspace-ui-files.txt
+          [[ $(wc -l < /tmp/modworkspace-ui-files.txt) -eq 20 ]]
 
-      - name: Extract and verify every source file
+      - name: Extract and verify every UI source file
         shell: bash
         run: |
           set -euo pipefail
           tar -xzf /tmp/modworkspace-ui.tar.gz -C .
           cat > /tmp/expected-sha256.txt <<'HASHES'
-          b322ec39db098a0bd7efc53ce1c2d03ecc0984814eb20ebb81259859ad716252  FModel/App.xaml.cs
+          04d65089d58b6c71974b9d7f0f4b654a531e28f21154941ed1860b92dd4f208f  FModel/App.xaml.cs
           6f97eac994340db7ec8fc4f223ca165d96fe28f4849b358f50a8b2d15cd9a450  FModel/AppPaths.cs
-          c796c48cc263b86c85300b2215801d9af96543b01c4195ced40e2c4b105ef4ec  FModel/Localization/LocalizationCatalog.cs
-          a8c4f27c154f8a5d49d7e46977e0a21bd5397e9c409259f5e9432b1e73d654bb  FModel/MainWindow.xaml
-          e27d506c3c8168dcd88ab8b0b9abc3f25a24d114713d19b704cee9072d07e511  FModel/Services/ApplicationService.cs
-          d3384ed9312fd96e9906e672b02385bea200c19767023a1f37b7ad71034e3be2  FModel/Services/ModWorkspaceService.cs
-          3cbcb296131ea0cd82d55c046b09fc9f302f17e40c8ed720bb8a4ff8ed7e058b  FModel/ViewModels/Commands/MenuCommand.cs
-          095696a450a3cbdca869f433b527462f23d05bd5bc875c8872a0550aaca2a0ae  FModel/ViewModels/Commands/RightClickMenuCommand.cs
-          cc59abb42064ab865a44a95303ca7ce8f177a4c481c1d047e38c91956a89610f  FModel/ViewModels/ModWorkspaceViewModel.cs
-          0579af7157a7d74fbb5561fe557c0c5828e4b22d449d2d8c2ea285b3f8f17954  FModel/Views/LocResEditor.xaml
-          752662b22ce6eeb718ad475452b1df988272fa12075f6d814e2d3a55be805390  FModel/Views/LocResEditor.xaml.cs
-          7ad6bb443da15e245e75900ecd8623cc1edd3b3c30bab801335f9c637b67fbf4  FModel/Views/ModWorkspace.xaml
-          89728b6cb415584e2e79632ef5cdc519dfce497b113904d4eb5e4f9c22ff9864  FModel/Views/ModWorkspace.xaml.cs
-          4667d3fc11b81bf57aa1aad7c822a01c847afe1e7a76cd8cc153e2dab269dc4d  FModel/Views/Resources/Controls/ContextMenus/FileContextMenu.xaml
-          f70f2c8852cccd08b63bac73a94a71a8a20c613f8b2d5a30812292d6066774aa  FModel/Views/TextPromptDialog.xaml
-          add9278e9914ba071ffc5e2211071bc1141188377d13405b576c420c0928a2d2  FModel/Views/TextPromptDialog.xaml.cs
-          89078af128bb0fbdd96fdf22bad9be72d4595b2e655632891ae2fea2ba0a0ea9  MOD_WORKSPACE.md
-          3153c627595b0e49fdb66f394f33c544097c3d21a1df380e9ea3c8c4ce98b17a  README.md
+          3dfb40d1ae6df4c3d479423f37076e2d03b6f54730b9a61884dd14204194fdeb  FModel/Localization/LocalizationCatalog.cs
+          307e6e6898659ce269a24ac37393543a657fe73fb136f571ae4a9ae8dc739334  FModel/MainWindow.xaml
+          0c9d691ff05ddfaf8cabc513428b77cc2f869d6de495615112908d7ac68dd3d2  FModel/Services/ApplicationService.cs
+          2e23a0432488b3241f727cf515fab48ce5c348f041250297583fb7f0693c81b6  FModel/Services/ModWorkspaceService.cs
+          0ada23b952a6b59c52e03ce7d5e4c552c79b53f0225e1e2c4ae5c556f154d833  FModel/ViewModels/Commands/MenuCommand.cs
+          568d667b72c0b11357b0b4c65a983aa69a0b883321e02435b9bc0c4da5503dd2  FModel/ViewModels/Commands/RightClickMenuCommand.cs
+          2305558f0d4efcd64adfe3e0f30a6253a188aaa7259559b7305f0343b13659c6  FModel/ViewModels/ModWorkspaceViewModel.cs
+          e6acd1f66aa2b4a6763c09863b9e53264ab1f03683948a7c37cd3daf041db6e6  FModel/Views/LocResEditor.xaml
+          43f9628771c3c20508013a92584e2eef9b9a318258a8d6fc7c64ebe002b88be2  FModel/Views/LocResEditor.xaml.cs
+          c8f5ed380481b1e50ddd443e28bf681939e6aea29f973ca1e0841eb8f0ab415c  FModel/Views/ModWorkspace.xaml
+          e0f31f10daca812eab46966cb9a61ecb2eae0e6a2a2fd03e1feffe3f49ece67e  FModel/Views/ModWorkspace.xaml.cs
+          7bf4d7e6eae177ccf17ae4b5ffddb2027115a9c2ae304a029714b8d97a355d46  FModel/Views/Resources/Controls/ContextMenus/FileContextMenu.xaml
+          643e41682638d4e1b9f4abeb0ee1d22cd33377939ae19bfc22bfd98e89c42f9b  FModel/Views/TextPromptDialog.xaml
+          6c36073312fc5d041fe03e5449e4d7ae4b7f81b46c2df63361e856282e32a9ed  FModel/Views/TextPromptDialog.xaml.cs
+          d0bb5d1432392feae01a4de2425e82e9e118891ee77445cb3173a6cdb75a4325  MOD_WORKSPACE.md
+          343e19a2f23f844eb4cd0921724215669b3d826359d3cf15b8a693916f857bce  README.md
+          26452e66e4ce242422c5226e21a0207da1115ebfa892048f3aa70ee36e15ad4f  tools/upstream-sync/Assert-RecreateInvariants.ps1
+          602013c2f96316eb37aab4f036621d291361d8e683d925246edac1d96379f318  tools/upstream-sync/protected-paths.txt
           HASHES
           sha256sum -c /tmp/expected-sha256.txt
-          rm -rf .automation/modworkspace-ui
 
-          cat > /tmp/expected-changes.txt <<'FILES'
-          FModel/App.xaml.cs
-          FModel/AppPaths.cs
-          FModel/Localization/LocalizationCatalog.cs
-          FModel/MainWindow.xaml
-          FModel/Services/ApplicationService.cs
-          FModel/Services/ModWorkspaceService.cs
-          FModel/ViewModels/Commands/MenuCommand.cs
-          FModel/ViewModels/Commands/RightClickMenuCommand.cs
-          FModel/ViewModels/ModWorkspaceViewModel.cs
-          FModel/Views/LocResEditor.xaml
-          FModel/Views/LocResEditor.xaml.cs
-          FModel/Views/ModWorkspace.xaml
-          FModel/Views/ModWorkspace.xaml.cs
-          FModel/Views/Resources/Controls/ContextMenus/FileContextMenu.xaml
-          FModel/Views/TextPromptDialog.xaml
-          FModel/Views/TextPromptDialog.xaml.cs
-          MOD_WORKSPACE.md
-          README.md
-          FILES
-          git status --porcelain=v1 --untracked-files=all | sed -E 's/^.. //' | grep -v '^\.github/workflows/apply-modworkspace-ui.yml$' | sort > /tmp/actual-changes.txt
-          diff -u /tmp/expected-changes.txt /tmp/actual-changes.txt
-
-      - name: Commit and push actual UI source
+      - name: Commit verified UI source tree
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf .automation/modworkspace-ui
+
           git config user.name 'fmodel-recreate-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add -A
+          git add \
+            FModel/App.xaml.cs \
+            FModel/AppPaths.cs \
+            FModel/Localization/LocalizationCatalog.cs \
+            FModel/MainWindow.xaml \
+            FModel/Services/ApplicationService.cs \
+            FModel/Services/ModWorkspaceService.cs \
+            FModel/ViewModels/Commands/MenuCommand.cs \
+            FModel/ViewModels/Commands/RightClickMenuCommand.cs \
+            FModel/ViewModels/ModWorkspaceViewModel.cs \
+            FModel/Views/LocResEditor.xaml \
+            FModel/Views/LocResEditor.xaml.cs \
+            FModel/Views/ModWorkspace.xaml \
+            FModel/Views/ModWorkspace.xaml.cs \
+            FModel/Views/Resources/Controls/ContextMenus/FileContextMenu.xaml \
+            FModel/Views/TextPromptDialog.xaml \
+            FModel/Views/TextPromptDialog.xaml.cs \
+            MOD_WORKSPACE.md \
+            README.md \
+            tools/upstream-sync/Assert-RecreateInvariants.ps1 \
+            tools/upstream-sync/protected-paths.txt
+          git add -A .automation/modworkspace-ui
+
+          git diff --cached --check
+          git diff --cached --name-only | sort | tee /tmp/staged-files.txt
+          [[ $(wc -l < /tmp/staged-files.txt) -eq 26 ]]
           git commit -m 'feat: add FModel Mod Workspace interface'
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
