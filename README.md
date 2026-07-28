@@ -51,3 +51,7 @@ FModel-Recreate remains licensed under GPL-3.0. The original FModel copyright, l
 ## Support
 
 Use this repository's Discussions and Releases pages for project-specific support and downloads.
+
+## Mod Workspace
+
+FModel-Recreate now includes an Unreal Engine 4 Mod Workspace for validated cooked-file replacement, LocRes editing, texture/audio cooking through a matching local UE4 editor, `_P.pak` building, archive verification, and managed install/uninstall. See [MOD_WORKSPACE.md](MOD_WORKSPACE.md) for supported formats, safety boundaries, and the full workflow.

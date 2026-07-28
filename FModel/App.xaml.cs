@@ -179,6 +179,8 @@ public partial class App
         }
 
         Directory.CreateDirectory(AppPaths.AppDataDirectory);
+        Directory.CreateDirectory(AppPaths.ModProjectsDirectory);
+        Directory.CreateDirectory(AppPaths.ToolsDirectory);
         Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Backups"));
         if (createExports) Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Exports"));
         Directory.CreateDirectory(Path.Combine(UserSettings.Default.OutputDirectory, "Logs"));

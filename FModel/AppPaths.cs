@@ -20,6 +20,8 @@ public static class AppPaths
     public static readonly string FirstRunMarker = Path.Combine(AppDataDirectory, "first-run-v1.complete");
     public static readonly string RuntimeVerificationMarker = Path.Combine(AppDataDirectory, "runtime-verification.complete");
     public static readonly string StartupCrashLog = Path.Combine(AppDataDirectory, "startup-crash.log");
+    public static readonly string ModProjectsDirectory = Path.Combine(AppDataDirectory, "ModProjects");
+    public static readonly string ToolsDirectory = Path.Combine(AppDataDirectory, "Tools");
 
     public static string ActiveSettingsFile
     {

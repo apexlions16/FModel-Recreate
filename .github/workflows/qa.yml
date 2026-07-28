@@ -35,12 +35,57 @@ jobs:
           git submodule status --recursive
           if ((git submodule status --recursive) -match '^[-+]') { throw 'Invalid submodule state.' }
 
-      - name: Restore
+      - name: Restore mod tools tests
+        run: dotnet restore .\FModel.ModTools.Tests\FModel.ModTools.Tests.csproj
+
+      - name: Restore application
         run: dotnet restore .\FModel\FModel.csproj -r win-x64
 
       - name: Audit NuGet dependencies
         shell: pwsh
-        run: dotnet list .\FModel\FModel.csproj package --vulnerable --include-transitive
+        run: |
+          dotnet list .\FModel.ModTools.Tests\FModel.ModTools.Tests.csproj package --vulnerable --include-transitive
+          dotnet list .\FModel\FModel.csproj package --vulnerable --include-transitive
+
+      - name: Download verified repak integration tool
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'FModel-Recreate-CI' } -Uri 'https://api.github.com/repos/trumank/repak/releases/tags/v0.2.3'
+          $asset = $release.assets | Where-Object name -eq 'repak_cli-x86_64-pc-windows-msvc.zip'
+          if (!$asset -or !$asset.digest.StartsWith('sha256:')) { throw 'The official repak release asset or digest is missing.' }
+          New-Item -ItemType Directory -Path .\artifacts\repak -Force | Out-Null
+          Invoke-WebRequest -Headers @{ 'User-Agent' = 'FModel-Recreate-CI' } -Uri $asset.browser_download_url -OutFile .\artifacts\repak.zip
+          $actual = (Get-FileHash .\artifacts\repak.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = $asset.digest.Substring('sha256:'.Length).ToLowerInvariant()
+          if ($actual -ne $expected) { throw "repak SHA-256 mismatch: expected $expected, got $actual" }
+          Expand-Archive .\artifacts\repak.zip .\artifacts\repak -Force
+          $repak = Get-ChildItem .\artifacts\repak -Filter repak.exe -Recurse | Select-Object -First 1
+          if (!$repak) { throw 'repak.exe was not found in the verified archive.' }
+          "FMR_REPAK_PATH=$($repak.FullName)" >> $env:GITHUB_ENV
+
+      - name: Test mod tools and real PAK round trip
+        id: modtests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          dotnet test .\FModel.ModTools.Tests\FModel.ModTools.Tests.csproj -c Release --no-restore --logger "trx;LogFileName=mod-tools.trx" 2>&1 | Tee-Object -FilePath modtools-test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload mod tools diagnostics
+        if: steps.modtests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: modtools-diagnostics-${{ github.sha }}
+          path: |
+            modtools-test.log
+            FModel.ModTools.Tests/TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Stop after mod tools failure
+        if: steps.modtests.outcome == 'failure'
+        shell: pwsh
+        run: throw 'Mod tools tests or compilation failed.'
 
       - name: Build
         id: build
