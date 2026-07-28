@@ -1,0 +1,122 @@
+name: Verify Mod Workspace QA Package
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - '.github/workflows/verify-modworkspace-qa.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    if: github.event.pull_request.head.ref == 'agent/verify-modworkspace-qa'
+    runs-on: ubuntu-latest
+    env:
+      DEV_SHA: d00062a9fc754e3c7a698b27e1400b6cc2f44667
+      ZIP_NAME: FModel-Recreate-QA-d00062a9fc754e3c7a698b27e1400b6cc2f44667.zip
+      SUM_NAME: FModel-Recreate-QA-d00062a9fc754e3c7a698b27e1400b6cc2f44667.sha256
+    steps:
+      - name: Wait for successful dev QA run
+        id: qa
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 40); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$DEV_SHA&event=push&per_page=20" > runs.json
+            RUN_ID=$(jq -r '.workflow_runs[] | select(.name == "FModel-Recreate QA") | .id' runs.json | head -n 1)
+            STATUS=$(jq -r --argjson id "${RUN_ID:-0}" '.workflow_runs[] | select(.id == $id) | .status' runs.json | head -n 1)
+            CONCLUSION=$(jq -r --argjson id "${RUN_ID:-0}" '.workflow_runs[] | select(.id == $id) | .conclusion // ""' runs.json | head -n 1)
+            echo "Attempt $attempt: run=${RUN_ID:-none} status=${STATUS:-none} conclusion=${CONCLUSION:-none}"
+
+            if [[ "$STATUS" == "completed" && "$CONCLUSION" == "success" ]]; then
+              echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+              break
+            fi
+            if [[ "$STATUS" == "completed" && "$CONCLUSION" != "success" ]]; then
+              echo "The dev QA run completed with conclusion: $CONCLUSION" >&2
+              exit 1
+            fi
+            if [[ "$attempt" -eq 40 ]]; then
+              echo 'Timed out while waiting for the dev QA run.' >&2
+              exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Verify QA workflow jobs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.qa.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" > jobs.json
+          jq -e '.jobs | length > 0 and all(.conclusion == "success")' jobs.json > /dev/null
+          jq -r '.jobs[] | "\(.name): \(.conclusion)"' jobs.json | tee qa-jobs.txt
+
+      - name: Download exact rolling QA assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir qa-package
+          gh release view qa --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets > qa-release.json
+          jq -e --arg zip "$ZIP_NAME" --arg sum "$SUM_NAME" '
+            .tagName == "qa" and
+            .isDraft == false and
+            .isPrerelease == true and
+            ([.assets[].name] | index($zip)) != null and
+            ([.assets[].name] | index($sum)) != null
+          ' qa-release.json > /dev/null
+          gh release download qa --repo "$GITHUB_REPOSITORY" --pattern "$ZIP_NAME" --pattern "$SUM_NAME" --dir qa-package
+
+      - name: Verify checksum archive and executable
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd qa-package
+          sha256sum -c "$SUM_NAME"
+          unzip -t "$ZIP_NAME"
+          [[ $(unzip -Z1 "$ZIP_NAME" | grep -c '^FModel-Recreate.exe$') -eq 1 ]]
+          unzip -p "$ZIP_NAME" FModel-Recreate.exe | head -c 2 | grep -q '^MZ$'
+          PACKAGE_SHA=$(sha256sum "$ZIP_NAME" | cut -d' ' -f1)
+          PACKAGE_SIZE=$(stat -c%s "$ZIP_NAME")
+          echo "sha256=$PACKAGE_SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$PACKAGE_SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Write verification report
+        shell: bash
+        env:
+          RUN_ID: ${{ steps.qa.outputs.run_id }}
+          PACKAGE_SHA: ${{ steps.package.outputs.sha256 }}
+          PACKAGE_SIZE: ${{ steps.package.outputs.size }}
+        run: |
+          set -euo pipefail
+          cat > qa-package/verification-report.txt <<REPORT
+          FModel-Recreate Mod Workspace QA verification
+          Dev commit: $DEV_SHA
+          QA workflow run: $RUN_ID
+          Asset: $ZIP_NAME
+          Size: $PACKAGE_SIZE bytes
+          SHA-256: $PACKAGE_SHA
+          Checksum: passed
+          ZIP integrity: passed
+          FModel-Recreate.exe entry: passed
+          PE MZ header: passed
+          REPORT
+          cat qa-package/verification-report.txt
+
+      - name: Upload independently verified package
+        uses: actions/upload-artifact@v4
+        with:
+          name: FModel-Recreate-ModWorkspace-QA-${{ env.DEV_SHA }}
+          path: qa-package/
+          if-no-files-found: error
+          retention-days: 14
