@@ -55,6 +55,12 @@ public class RightClickMenuCommand : ViewModelCommand<ApplicationViewModel>
         if (folders.Length == 0 && assets.Length == 0)
             return;
 
+        if (trigger == "Mod_Add_To_Workspace")
+        {
+            await ApplicationService.ModWorkspace.StageGameFilesAsync(assets!);
+            return;
+        }
+
         var assetsGroups = assets.GroupBy(static gf => gf.Directory);
         var (action, showtype, bulktype) = trigger switch
         {

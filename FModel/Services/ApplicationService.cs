@@ -7,5 +7,6 @@ namespace FModel.Services
         public static ThreadWorkerViewModel ThreadWorkerView { get; } = new();
         public static ApplicationViewModel ApplicationView { get; } = new();
         public static ApiEndpointViewModel ApiEndpointView { get; } = new();
+        public static ModWorkspaceService ModWorkspace { get; } = new();
     }
 }

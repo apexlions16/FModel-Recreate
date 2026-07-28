@@ -108,6 +108,16 @@ Require-Pattern '.github/workflows/upstream-sync.yml' 'uses:\s+\./\.github/workf
 Require-Pattern '.github/workflows/upstream-sync.yml' 'TAG="upstream-v\$VERSION"' 'verification of the separate upstream tag namespace'
 Forbid-Pattern '.github/workflows/upstream-sync.yml' 'uses:\s+\./\.github/workflows/release\.yml' 'automatic access to the stable release workflow'
 
+Require-Pattern 'FModel.ModTools/FModel.ModTools.csproj' '<TargetFramework>net10.0</TargetFramework>' 'the independent UE4 mod-tools library'
+Require-Pattern 'FModel.ModTools/RepakBackend.cs' 'class RepakBackend' 'the verified legacy PAK repack backend'
+Require-Pattern 'FModel.ModTools/LocResCodec.cs' 'class LocResCodec' 'LocRes read and write support'
+Require-Pattern 'FModel/Services/ModWorkspaceService.cs' 'class ModWorkspaceService' 'the application mod-workspace service'
+Require-Pattern 'FModel/ViewModels/ModWorkspaceViewModel.cs' 'BuildAsync' 'the Mod Workspace build pipeline'
+Require-Pattern 'FModel/Views/ModWorkspace.xaml' 'Build _P\.pak' 'the user-facing Mod Workspace build control'
+Require-Pattern 'FModel/Views/LocResEditor.xaml' 'Localized String' 'the LocRes editing surface'
+Require-Pattern 'FModel/Views/Resources/Controls/ContextMenus/FileContextMenu.xaml' 'Mod_Add_To_Workspace' 'asset-to-mod staging from the FModel explorer'
+Require-Pattern '.github/workflows/qa.yml' 'Test mod tools and real PAK round trip' 'mod-tools unit and real PAK integration tests'
+
 if ($failures.Count -gt 0) {
     $message = "FModel-Recreate invariant guard failed:`n- " + ($failures -join "`n- ")
     throw $message
