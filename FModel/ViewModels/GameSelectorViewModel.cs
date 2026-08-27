@@ -134,11 +134,27 @@ public class GameSelectorViewModel : ViewModel
             }
         }
 
-        var crashReportClientExe = Path.Combine(projectDir, "..", "Engine", "Binaries", "Win64", "CrashReportClient.exe");
-        if (File.Exists(crashReportClientExe) && TryGetUeVersionFromExe(crashReportClientExe, out ueVersion))
+        var projectEngineBinariesDir = Path.Combine(projectDir, "..", "Engine", "Binaries", "Win64");
+
+        if (Directory.Exists(projectEngineBinariesDir))
         {
-            Log.Information("Detected UE version {UeVersion} from \"{Exe}\"", ueVersion, crashReportClientExe);
-            return true;
+            var crashReportClientExe = Path.Combine(projectEngineBinariesDir, "CrashReportClient.exe");
+            if (File.Exists(crashReportClientExe) && TryGetUeVersionFromExe(crashReportClientExe, out ueVersion))
+            {
+                Log.Information("Detected UE version {UeVersion} from \"{Exe}\"", ueVersion, crashReportClientExe);
+                return true;
+            }
+            if (Directory.GetFiles(projectEngineBinariesDir, "*-Win64-Shipping.exe") is { Length: > 0 } shipping)
+            {
+                foreach (var exe in shipping)
+                {
+                    if (TryGetUeVersionFromExe(exe, out ueVersion))
+                    {
+                        Log.Information("Detected UE version {UeVersion} from \"{Exe}\"", ueVersion, exe);
+                        return true;
+                    }
+                }
+            }
         }
 
         ueVersion = EGame.GAME_UE4_LATEST;
@@ -180,8 +196,8 @@ public class GameSelectorViewModel : ViewModel
             .OrderBy(value => ((int)value & 0xFF) == 0);
     private IEnumerable<DirectorySettings> EnumerateDetectedGames()
     {
-        yield return GetUnrealEngineGame("Fortnite", "\\FortniteGame\\Content\\Paks", EGame.GAME_UE5_8);
-        yield return DirectorySettings.Default("Fortnite [LIVE]", Constants._FN_LIVE_TRIGGER, ue: EGame.GAME_UE5_8);
+        yield return GetUnrealEngineGame("Fortnite", "\\FortniteGame\\Content\\Paks", EGame.GAME_UE6_0);
+        yield return DirectorySettings.Default("Fortnite [LIVE]", Constants._FN_LIVE_TRIGGER, ue: EGame.GAME_UE6_0);
         yield return GetUnrealEngineGame("Pewee", "\\RogueCompany\\Content\\Paks", EGame.GAME_RogueCompany);
         yield return GetUnrealEngineGame("Rosemallow", "\\Indiana\\Content\\Paks", EGame.GAME_UE4_21);
         yield return GetUnrealEngineGame("Catnip", "\\OakGame\\Content\\Paks", EGame.GAME_Borderlands3);
