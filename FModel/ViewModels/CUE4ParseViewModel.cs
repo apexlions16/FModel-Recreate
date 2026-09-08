@@ -11,6 +11,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using AdonisUI.Controls;
+using CUE4Parse_Conversion.Exporters;
+using CUE4Parse_Conversion.Sounds;
 using CUE4Parse;
 using CUE4Parse.Compression;
 using CUE4Parse.Encryption.Aes;
@@ -23,6 +25,7 @@ using CUE4Parse.GameTypes.AshEchoes.FileProvider;
 using CUE4Parse.GameTypes.Borderlands3.Assets.Exports;
 using CUE4Parse.GameTypes.Borderlands4.Assets.Exports;
 using CUE4Parse.GameTypes.Borderlands4.Wwise;
+using CUE4Parse.GameTypes.Dawnwalker.Assets.Exports;
 using CUE4Parse.GameTypes.DFHO.Assets.Objects;
 using CUE4Parse.GameTypes.HonorOfKings.FileProvider;
 using CUE4Parse.GameTypes.KRD.Assets.Exports;
@@ -32,6 +35,7 @@ using CUE4Parse.GameTypes.RocoKingdomWorld.Assets.Objects;
 using CUE4Parse.GameTypes.SMG.UE4.Assets.Exports.Wwise;
 using CUE4Parse.GameTypes.SquareEnix.UE4.Assets.Exports;
 using CUE4Parse.GameTypes.Theia.FileProvider;
+using CUE4Parse.GameTypes.WarnerBros.GothamKnights.Assets.Exports.Wwise;
 using CUE4Parse.MappingsProvider;
 using CUE4Parse.MappingsProvider.Jmap;
 using CUE4Parse.MappingsProvider.Usmap;
@@ -40,14 +44,16 @@ using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Animation;
 using CUE4Parse.UE4.Assets.Exports.CriWare;
+using CUE4Parse.UE4.Assets.Exports.Engine;
 using CUE4Parse.UE4.Assets.Exports.Fmod;
+using CUE4Parse.UE4.Assets.Exports.GeometryCollection;
 using CUE4Parse.UE4.Assets.Exports.Material;
-using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.Sound;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Assets.Exports.Verse;
 using CUE4Parse.UE4.Assets.Exports.Wwise;
+using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.BinaryConfig;
 using CUE4Parse.UE4.CriWare;
 using CUE4Parse.UE4.CriWare.Readers;
@@ -66,8 +72,6 @@ using CUE4Parse.UE4.Shaders;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.UE4.Wwise;
 using CUE4Parse.Utils;
-using CUE4Parse_Conversion;
-using CUE4Parse_Conversion.Sounds;
 using EpicManifestParser;
 using EpicManifestParser.UE;
 using FModel.Creator;
@@ -86,6 +90,7 @@ using Serilog;
 using SkiaSharp;
 using Svg.Skia;
 using UE4Config.Parsing;
+using static CUE4Parse.UE4.Versions.EGame;
 using Application = System.Windows.Application;
 using FGuid = CUE4Parse.UE4.Objects.Core.Misc.FGuid;
 
@@ -190,27 +195,26 @@ public class CUE4ParseViewModel : ViewModel
             }
             default:
             {
-                var project = gameDirectory.SubstringBeforeLast(gameDirectory.Contains("eFootball") ? "\\pak" : "\\Content").SubstringAfterLast("\\");
-                Provider = project switch
+                Provider = versionContainer.Game switch
                 {
-                    "StateOfDecay2" => new DefaultFileProvider(new DirectoryInfo(gameDirectory),
+                    GAME_StateOfDecay2 => new DefaultFileProvider(new DirectoryInfo(gameDirectory),
                     [
                         new(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "\\StateOfDecay2\\Saved\\Paks"),
                         new(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "\\StateOfDecay2\\Saved\\DisabledPaks")
                     ], SearchOption.AllDirectories, versionContainer, pathComparer),
-                    "eFootball" => new DefaultFileProvider(new DirectoryInfo(gameDirectory),
+                    GAME_eFootball => new DefaultFileProvider(new DirectoryInfo(gameDirectory),
                     [
                         new(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData) + "\\KONAMI\\eFootball\\ST\\Download")
                     ], SearchOption.AllDirectories, versionContainer, pathComparer),
-                    "DeadByDaylight" => new DefaultFileProvider(new DirectoryInfo(gameDirectory),
+                    GAME_DeadByDaylight => new DefaultFileProvider(new DirectoryInfo(gameDirectory),
                     [
                         new(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "\\DeadByDaylight\\Saved\\PersistentDownloadDir\\DynamicContent")
                     ], SearchOption.AllDirectories, versionContainer, pathComparer),
-                    _ when versionContainer.Game is EGame.GAME_AshEchoes => new AEDefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer),
-                    _ when versionContainer.Game is EGame.GAME_BlackStigma => new DefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, StringComparer.Ordinal),
-                    _ when versionContainer.Game is EGame.GAME_HonorofKingsWorld => new HoKWDefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer),
-                    _ when versionContainer.Game is EGame.GAME_LordOfMysteries => new LoMDefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer),
-                    _ when versionContainer.Game is EGame.GAME_ArcRaiders => new TheiaFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer),
+                    GAME_AshEchoes => new AEDefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer),
+                    GAME_BlackStigma => new DefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, StringComparer.Ordinal),
+                    GAME_HonorofKingsWorld => new HoKWDefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer),
+                    GAME_LordOfMysteries => new LoMDefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer),
+                    GAME_ArcRaiders or GAME_Highguard or GAME_MARVELTokonFightingSouls => new TheiaFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer),
                     _ => new DefaultFileProvider(gameDirectory, SearchOption.AllDirectories, versionContainer, pathComparer)
                 };
 
@@ -221,6 +225,7 @@ public class CUE4ParseViewModel : ViewModel
         Provider.ReadScriptData = UserSettings.Default.ReadScriptData;
         Provider.ReadShaderMaps = UserSettings.Default.ReadShaderMaps;
         Provider.ReadNaniteData = true;
+        PropertyUtil.SearchPropertyInTemplate = true; // search template properties when looking for a prop via GetOrDefault and cie
 
         GameDirectory = new GameDirectoryViewModel();
         AssetsFolder = new AssetsFolderViewModel();
@@ -514,7 +519,7 @@ public class CUE4ParseViewModel : ViewModel
                 FLogger.Text("Additive animations have their reference pose stripped, which will lead to inaccurate preview and export", Constants.WHITE, true));
         }
 
-        if (Provider.Versions.Game is EGame.GAME_UE4_LATEST or EGame.GAME_UE5_LATEST && !Provider.ProjectName.Equals("FortniteGame", StringComparison.OrdinalIgnoreCase)) // ignore fortnite globally
+        if (Provider.Versions.Game is GAME_UE4_LATEST or GAME_UE5_LATEST && !Provider.ProjectName.Equals("FortniteGame", StringComparison.OrdinalIgnoreCase)) // ignore fortnite globally
         {
             FLogger.Append(ELog.Warning, () =>
                 FLogger.Text($"Experimental UE version selected, likely unsuitable for '{Provider.GameDisplayName ?? Provider.ProjectName}'", Constants.WHITE, true));
@@ -645,7 +650,7 @@ public class CUE4ParseViewModel : ViewModel
         Parallel.ForEach(folder.AssetsList.Assets, entry =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ExportData(entry.Asset, false);
+            ExportData(entry.Asset);
         });
 
         foreach (var f in folder.Folders) ExportFolder(cancellationToken, f);
@@ -653,27 +658,6 @@ public class CUE4ParseViewModel : ViewModel
 
     public void ExtractFolder(CancellationToken cancellationToken, TreeItem folder, EBulkType bulk)
         => BulkFolder(cancellationToken, folder, asset => Extract(cancellationToken, asset, TabControl.HasNoTabs, bulk));
-
-    public void ExtractFolder(CancellationToken cancellationToken, TreeItem folder)
-        => BulkFolder(cancellationToken, folder, asset => Extract(cancellationToken, asset, TabControl.HasNoTabs));
-
-    public void SaveFolder(CancellationToken cancellationToken, TreeItem folder)
-        => BulkFolder(cancellationToken, folder, asset => Extract(cancellationToken, asset, TabControl.HasNoTabs, EBulkType.Properties | EBulkType.Auto));
-
-    public void TextureFolder(CancellationToken cancellationToken, TreeItem folder)
-        => BulkFolder(cancellationToken, folder, asset => Extract(cancellationToken, asset, TabControl.HasNoTabs, EBulkType.Textures | EBulkType.Auto));
-
-    public void ModelFolder(CancellationToken cancellationToken, TreeItem folder)
-        => BulkFolder(cancellationToken, folder, asset => Extract(cancellationToken, asset, TabControl.HasNoTabs, EBulkType.Meshes | EBulkType.Auto));
-
-    public void AnimationFolder(CancellationToken cancellationToken, TreeItem folder)
-        => BulkFolder(cancellationToken, folder, asset => Extract(cancellationToken, asset, TabControl.HasNoTabs, EBulkType.Animations | EBulkType.Auto));
-
-    public void AudioFolder(CancellationToken cancellationToken, TreeItem folder)
-        => BulkFolder(cancellationToken, folder, asset => Extract(cancellationToken, asset, TabControl.HasNoTabs, EBulkType.Audio | EBulkType.Auto));
-
-    public void CodeFolder(CancellationToken cancellationToken, TreeItem folder)
-        => BulkFolder(cancellationToken, folder, asset => Extract(cancellationToken, asset, TabControl.HasNoTabs, EBulkType.Code | EBulkType.Auto));
 
     public void Extract(CancellationToken cancellationToken, GameFile entry, bool addNewTab = false, EBulkType bulk = EBulkType.None)
     {
@@ -699,7 +683,34 @@ public class CUE4ParseViewModel : ViewModel
 
                 if (saveProperties || updateUi)
                 {
-                    TabControl.SelectedTab.SetDocumentText(JsonConvert.SerializeObject(result.GetDisplayData(saveProperties), Formatting.Indented), saveProperties, updateUi);
+                    var displayData = result.GetDisplayData(saveProperties);
+
+                    if (UserSettings.Default.MergeEditorOnlyDataExports && Provider.TryLoadPackage(entry.Path.SubstringBefore('.') + ".o.uasset", out var editorAsset))
+                    {
+                        var pkg = Provider.LoadPackage(entry.Path);
+                        var exports = pkg.GetExports().ToArray();
+                        var finalExports = new List<UObject>(exports);
+                        var editorOnlyDataExports = new HashSet<UObject>();
+
+                        foreach (var export in exports)
+                        {
+                            var editorData = editorAsset.GetExportOrNull(export.Name + "EditorOnlyData");
+                            if (editorData == null)
+                                continue;
+
+                            export.Properties.AddRange(editorData.Properties);
+                            editorOnlyDataExports.Add(editorData);
+                        }
+
+                        if (editorOnlyDataExports.Count > 0)
+                        {
+                            finalExports.AddRange(editorAsset.GetExports().Where(editorExport => !editorOnlyDataExports.Contains(editorExport)));
+                        }
+
+                        displayData = finalExports;
+                    }
+
+                    TabControl.SelectedTab.SetDocumentText(JsonConvert.SerializeObject(displayData, Formatting.Indented), saveProperties, updateUi);
                     if (saveProperties) break; // do not search for viewable exports if we are dealing with jsons
                 }
 
@@ -728,17 +739,17 @@ public class CUE4ParseViewModel : ViewModel
 
                 break;
             }
-            case "dat" when Provider.Versions.Game is EGame.GAME_Aion2:
+            case "dat" when Provider.Versions.Game is GAME_Aion2:
             {
                 ProcessAion2DatFile(entry, updateUi, saveProperties);
                 break;
             }
-            case "bytes" when Provider.Versions.Game is EGame.GAME_RocoKingdomWorld:
+            case "bytes" when Provider.Versions.Game is GAME_RocoKingdomWorld:
             {
                 ProcessRocoBinFile(entry, updateUi, saveProperties);
                 break;
             }
-            case "dbc" when Provider.Versions.Game is EGame.GAME_AshesOfCreation:
+            case "dbc" when Provider.Versions.Game is GAME_AshesOfCreation:
             {
                 ProcessCacheDBFile(entry, updateUi, saveProperties);
                 break;
@@ -814,8 +825,8 @@ public class CUE4ParseViewModel : ViewModel
             case "py":
             case "md":
             case "h":
-            case "non" when Provider.Versions.Game is EGame.GAME_RocoKingdomWorld:
-            case "cam" when Provider.Versions.Game is EGame.GAME_RocoKingdomWorld:
+            case "non" when Provider.Versions.Game is GAME_RocoKingdomWorld:
+            case "cam" when Provider.Versions.Game is GAME_RocoKingdomWorld:
             // Uncharted Waters Origin
             case "crn":
             case "uwt":
@@ -835,8 +846,9 @@ public class CUE4ParseViewModel : ViewModel
 
                 break;
             }
-            case "ebd" when Provider.Versions.Game is EGame.GAME_ArcRaiders:
+            case "ebd" when Provider.Versions.Game is GAME_ArcRaiders:
             case "json":
+            case "Json":
             {
                 var data = Provider.SaveAsset(entry);
                 using var stream = new MemoryStream(data) { Position = 0 };
@@ -975,7 +987,7 @@ public class CUE4ParseViewModel : ViewModel
 
                 break;
             }
-            case "ustbin" when Provider.Versions.Game is EGame.GAME_DeltaForce:
+            case "ustbin" when Provider.Versions.Game is GAME_DeltaForce:
             {
                 var archive = entry.CreateReader();
                 var ustbin = new FDeltaStringTable(archive);
@@ -1133,7 +1145,7 @@ public class CUE4ParseViewModel : ViewModel
             }
             else if (entry.NameWithoutExtension.Equals("key_manifest"))
             {
-                var keymanifest = new FAion2KeyManifestFile(entry, Provider);
+                var keymanifest = new FAion2KeyManifestFile(entry);
                 TabControl.SelectedTab.SetDocumentText(JsonConvert.SerializeObject(keymanifest, Formatting.Indented), saveProperties, updateUi);
             }
             else
@@ -1222,12 +1234,12 @@ public class CUE4ParseViewModel : ViewModel
         return decompiled;
     }
 
-    public void ExtractAndScroll(CancellationToken cancellationToken, string fullPath, string objectName, string parentExportType)
+    public void ExtractAndScroll(CancellationToken cancellationToken, string fullPath, string objectName)
     {
         Log.Information("User CTRL-CLICKED to extract '{FullPath}'", fullPath);
 
         var entry = Provider[fullPath];
-        TabControl.AddTab(entry, parentExportType);
+        TabControl.AddTab(entry);
         TabControl.SelectedTab.ScrollTrigger = objectName;
 
         var result = Provider.GetLoadPackageResult(entry, objectName);
@@ -1267,7 +1279,16 @@ public class CUE4ParseViewModel : ViewModel
             }
             case UTexture when (isNone || saveTextures) && pointer.Object.Value is UTexture texture:
             {
-                TabControl.SelectedTab.AddImage(texture, saveTextures, updateUi);
+                if (saveTextures)
+                {
+                    SaveExport(texture);
+                }
+
+                if (updateUi)
+                {
+                    TabControl.SelectedTab.AddImage(texture, false, true);
+                }
+
                 return false;
             }
             case USvgAsset when (isNone || saveTextures) && pointer.Object.Value is USvgAsset svgasset:
@@ -1325,6 +1346,11 @@ public class CUE4ParseViewModel : ViewModel
                 }
 
                 TabControl.SelectedTab.AddImage(sourceFile.SubstringAfterLast('/'), false, bitmap, false, updateUi);
+                return false;
+            }
+            case UBiomesMaskTextureData when (isNone || saveTextures) && pointer.Object.Value is UBiomesMaskTextureData biomes && biomes.MaskData is { } maskData:
+            {
+                TabControl.SelectedTab.AddImage(biomes.Name, false, SKBitmap.Decode(maskData.Value), false, updateUi);
                 return false;
             }
             // Supermassive Games (for example - The Dark Pictures Anthology: House of Ashes etc.)
@@ -1437,6 +1463,11 @@ public class CUE4ParseViewModel : ViewModel
 
                     SaveAndPlaySound(cancellationToken, outputPath, audioFormat, data, saveAudio, updateUi);
                 }
+                if (Provider.Versions.Game is GAME_GearsofWarEDay && akMediaAsset.CustomGameData is FByteBulkData bulkData)
+                {
+                    var shouldDecompress = UserSettings.Default.CompressedAudioMode is ECompressedAudio.PlayDecompressed;
+                    SaveAndPlaySound(cancellationToken, outputPath, "WEM", bulkData.Data, saveAudio, updateUi);
+                }
                 return false;
             }
             case UAkAudioEventData when (isNone || saveAudio) && pointer.Object.Value is UAkAudioEventData akAudioEventData:
@@ -1453,6 +1484,12 @@ public class CUE4ParseViewModel : ViewModel
                             akMediaAssetData.Decode(shouldDecompress, out var audioFormat, out var data);
 
                             SaveAndPlaySound(cancellationToken, outputPath, audioFormat, data, saveAudio, updateUi);
+                        }
+                        if (Provider.Versions.Game is GAME_GearsofWarEDay && akMediaAsset.CustomGameData is FByteBulkData bulkData)
+                        {
+                            var audioName = akMediaAsset.MediaName ?? $"{akAudioEventData.Outer.Name} ({akMediaAsset.ID})";
+                            var outputPath = Path.Combine(TabControl.SelectedTab.Entry.PathWithoutExtension.Replace('\\', '/').SubstringBeforeLast('/'), audioName);
+                            SaveAndPlaySound(cancellationToken, outputPath, "WEM", bulkData.Data, saveAudio, updateUi);
                         }
                     }
                 }
@@ -1471,7 +1508,7 @@ public class CUE4ParseViewModel : ViewModel
             // Borderlands 4
             case UFaceFXAnimSet when (isNone || saveAudio) && pointer.Object.Value is UFaceFXAnimSet faceFXAnimSet:
             {
-                if (Provider.Versions.Game is not EGame.GAME_Borderlands4)
+                if (Provider.Versions.Game is not GAME_Borderlands4)
                     return false;
 
                 var ownerDirectory = WwiseProvider.GetOwnerDirectory(faceFXAnimSet);
@@ -1522,17 +1559,43 @@ public class CUE4ParseViewModel : ViewModel
                 }
                 return false;
             }
-            case UWorld when isNone && UserSettings.Default.PreviewWorlds:
-            case UBlueprintGeneratedClass when isNone && UserSettings.Default.PreviewWorlds && TabControl.SelectedTab.ParentExportType switch
+            // Gotham Knights
+            case UOrpheusBank when (isNone || saveAudio) && pointer.Object.Value is UOrpheusBank orpheusBank:
             {
-                "JunoBuildInstructionsItemDefinition" => true,
-                "JunoBuildingSetAccountItemDefinition" => true,
-                "JunoBuildingPropAccountItemDefinition" => true,
-                _ => false
-            }:
+                if (orpheusBank.SoundBank is null)
+                    return false;
+
+                var extractedSounds = WwiseProvider.ExtractBankSounds(orpheusBank.SoundBank);
+                foreach (var sound in extractedSounds)
+                {
+                    SaveAndPlaySound(cancellationToken, sound.OutputPath, sound.Extension, sound.Data?.GetData() ?? [], saveAudio, updateUi);
+                }
+
+                return false;
+            }
+            // Gotham Knights
+            case UOrpheusEvent when (isNone || saveAudio) && pointer.Object.Value is UOrpheusEvent orpheusEvent:
+            {
+                var extractedSounds = WwiseProvider.ExtractGothamKnightsAudioEventSounds(orpheusEvent);
+                foreach (var sound in extractedSounds)
+                {
+                    SaveAndPlaySound(cancellationToken, sound.OutputPath, sound.Extension, sound.Data?.GetData() ?? [], saveAudio, updateUi);
+                }
+
+                return false;
+            }
+            case UWorld when isNone && UserSettings.Default.PreviewWorlds:
+            // case UBlueprintGeneratedClass when isNone && UserSettings.Default.PreviewWorlds && TabControl.SelectedTab.ParentExportType switch
+            // {
+            //     "JunoBuildInstructionsItemDefinition" => true,
+            //     "JunoBuildingSetAccountItemDefinition" => true,
+            //     "JunoBuildingPropAccountItemDefinition" => true,
+            //     _ => false
+            // }:
             case UPaperSprite when isNone && UserSettings.Default.PreviewMaterials:
             case UStaticMesh when isNone && UserSettings.Default.PreviewStaticMeshes:
-            case USkeletalMesh when isNone && UserSettings.Default.PreviewSkeletalMeshes:
+            case UGeometryCollection when isNone && UserSettings.Default.PreviewStaticMeshes:
+            case USkinnedAsset when isNone && UserSettings.Default.PreviewSkeletalMeshes:
             case USkeleton when isNone && UserSettings.Default.SaveSkeletonAsMesh:
             case UMaterialInstance when isNone && UserSettings.Default.PreviewMaterials && !ModelIsOverwritingMaterial &&
                                         !(Provider.ProjectName.Equals("FortniteGame", StringComparison.OrdinalIgnoreCase) &&
@@ -1558,12 +1621,14 @@ public class CUE4ParseViewModel : ViewModel
                 return true;
             }
             case UStaticMesh when HasFlag(bulk, EBulkType.Meshes):
-            case USkeletalMesh when HasFlag(bulk, EBulkType.Meshes):
+            case UGeometryCollection when HasFlag(bulk, EBulkType.Meshes):
+            case USkinnedAsset when HasFlag(bulk, EBulkType.Meshes):
             case USkeleton when UserSettings.Default.SaveSkeletonAsMesh && HasFlag(bulk, EBulkType.Meshes):
-            // case UMaterialInstance when HasFlag(bulk, EBulkType.Materials): // read the fucking json
-            case UAnimSequenceBase when HasFlag(bulk, EBulkType.Animations):
+            // case UMaterialInterface when HasFlag(bulk, EBulkType.Materials):
+            case UAnimationAsset when HasFlag(bulk, EBulkType.Animations):
+            case UWorld when HasFlag(bulk, EBulkType.Worlds):
             {
-                SaveExport(pointer.Object.Value, updateUi);
+                SaveExport(pointer.Object.Value);
                 return true;
             }
             default:
@@ -1720,64 +1785,27 @@ public class CUE4ParseViewModel : ViewModel
         });
     }
 
-    private void SaveExport(UObject export, bool updateUi = true)
+    private void SaveExport(UObject export)
     {
-        var toSave = new Exporter(export, UserSettings.Default.ExportOptions);
-        var toSaveDirectory = new DirectoryInfo(UserSettings.Default.ModelDirectory);
-        if (toSave.TryWriteToDir(toSaveDirectory, out var label, out var savedFilePath))
+        try
         {
-            Interlocked.Increment(ref ExportedCount);
-            Log.Information("Successfully saved {FilePath}", savedFilePath);
-            if (updateUi)
-            {
-                FLogger.Append(ELog.Information, () =>
-                {
-                    FLogger.Text("Successfully saved ", Constants.WHITE);
-                    FLogger.Link(label, savedFilePath, true);
-                });
-            }
+            ExportSessionViewModel.Instance.Session.Add(export);
         }
-        else
+        catch (Exception e)
         {
-            Interlocked.Increment(ref FailedExportCount);
-            Log.Error("{FileName} could not be saved", export.Name);
-            FLogger.Append(ELog.Error, () => FLogger.Text($"Could not save '{export.Name}'", Constants.WHITE, true));
+            Log.Error(e, "Could not add to export session");
         }
     }
 
-    private readonly object _rawData = new ();
-    public void ExportData(GameFile entry, bool updateUi = true)
+    public void ExportData(GameFile entry)
     {
-        if (Provider.TrySavePackage(entry, out var assets))
+        try
         {
-            string path = UserSettings.Default.RawDataDirectory;
-            Parallel.ForEach(assets, kvp =>
-            {
-                lock (_rawData)
-                {
-                    path = Path.Combine(UserSettings.Default.RawDataDirectory, UserSettings.Default.KeepDirectoryStructure ? kvp.Key : kvp.Key.SubstringAfterLast('/')).Replace('\\', '/');
-                    Directory.CreateDirectory(path.SubstringBeforeLast('/'));
-                    File.WriteAllBytes(path, kvp.Value);
-                }
-            });
-
-            Interlocked.Increment(ref ExportedCount);
-            Log.Information("{FileName} successfully exported", entry.Name);
-            if (updateUi)
-            {
-                FLogger.Append(ELog.Information, () =>
-                {
-                    FLogger.Text("Successfully exported ", Constants.WHITE);
-                    FLogger.Link(entry.Name, path, true);
-                });
-            }
+            ExportSessionViewModel.Instance.Session.Add(new RawDataExporter(entry, Provider));
         }
-        else
+        catch (Exception e)
         {
-            Interlocked.Increment(ref FailedExportCount);
-            Log.Error("{FileName} could not be exported", entry.Name);
-            if (updateUi)
-                FLogger.Append(ELog.Error, () => FLogger.Text($"Could not export '{entry.Name}'", Constants.WHITE, true));
+            Log.Error(e, "Could not add to export session");
         }
     }
 

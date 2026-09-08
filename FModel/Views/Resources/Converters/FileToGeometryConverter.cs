@@ -32,8 +32,10 @@ public class FileToGeometryConverter : IMultiValueConverter
 
             EAssetCategory.StaticMesh => ("StaticMeshIconAlt", "NeutralBrush"),
             EAssetCategory.SkeletalMesh => ("SkeletalMeshIconAlt", "NeutralBrush"),
+            EAssetCategory.ChaosClothAsset => ("ChaosClothIcon", "ChaosClothBrush"),
             EAssetCategory.CustomizableObject => ("StaticMeshIconAlt", "CustomizableObjectBrush"),
             EAssetCategory.NaniteDisplacedMesh => ("StaticMeshIconAlt", "NaniteDisplacedMeshBrush"),
+            EAssetCategory.GeometryCollection => ("GeometryCollectionIcon", "NeutralBrush"),
 
             EAssetCategory.Material => ("MaterialIcon", "MaterialBrush"),
             EAssetCategory.MaterialEditorData => ("MaterialIcon", "MaterialEditorBrush"),
@@ -93,11 +95,13 @@ public class FileToGeometryConverter : IMultiValueConverter
 
             EAssetCategory.ByteCode => ("CodeIcon", "CodeBrush"),
 
+            // Game specific below
             EAssetCategory.Borderlands => ("BorderlandsIcon", "BorderlandsBrush"),
             EAssetCategory.Aion2 => ("AionIcon", "AionBrush"),
             EAssetCategory.RocoKingdomWorld => ("RocoKingdomWorldIcon", "RocoKingdomWorldBrush"),
             EAssetCategory.DeltaForce => ("DeltaForceIcon", "DeltaForceBrush"),
-            EAssetCategory.LegoBatman => ("BatmanIcon", "BatmanBrush"),
+            EAssetCategory.LegoBatman or EAssetCategory.GothamKnights => ("BatmanIcon", "BatmanBrush"),
+            EAssetCategory.ArcSys => ("ArcSysIcon", "ArcSysBrush"),
 
             _ => ("AssetIcon", "NeutralBrush")
         };

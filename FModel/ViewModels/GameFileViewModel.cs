@@ -5,19 +5,22 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-
+using CUE4Parse_Conversion.Textures;
 using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.GameTypes.Borderlands3.Assets.Exports;
 using CUE4Parse.GameTypes.Borderlands4.Assets.Exports;
 using CUE4Parse.GameTypes.FN.Assets.Exports.DataAssets;
 using CUE4Parse.GameTypes.LegoBatman.Assets;
+using CUE4Parse.GameTypes.RED.Assets.Exports;
 using CUE4Parse.GameTypes.SMG.UE4.Assets.Exports.Wwise;
 using CUE4Parse.GameTypes.SMG.UE4.Assets.Objects;
 using CUE4Parse.GameTypes.SquareEnix.UE4.Assets.Exports;
+using CUE4Parse.GameTypes.WarnerBros.GothamKnights.Assets.Exports.Wwise;
 using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Animation;
 using CUE4Parse.UE4.Assets.Exports.BuildData;
+using CUE4Parse.UE4.Assets.Exports.ChaosClothAsset;
 using CUE4Parse.UE4.Assets.Exports.Component;
 using CUE4Parse.UE4.Assets.Exports.CriWare;
 using CUE4Parse.UE4.Assets.Exports.CustomizableObject;
@@ -26,6 +29,7 @@ using CUE4Parse.UE4.Assets.Exports.Engine.Font;
 using CUE4Parse.UE4.Assets.Exports.Fmod;
 using CUE4Parse.UE4.Assets.Exports.FMod;
 using CUE4Parse.UE4.Assets.Exports.Foliage;
+using CUE4Parse.UE4.Assets.Exports.GeometryCollection;
 using CUE4Parse.UE4.Assets.Exports.Internationalization;
 using CUE4Parse.UE4.Assets.Exports.LevelSequence;
 using CUE4Parse.UE4.Assets.Exports.Material;
@@ -49,17 +53,11 @@ using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Objects.UObject.Editor;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.Utils;
-
-using CUE4Parse_Conversion.Textures;
-
 using FModel.Framework;
 using FModel.Services;
 using FModel.Settings;
-
 using Serilog;
-
 using SkiaSharp;
-
 using Svg.Skia;
 
 namespace FModel.ViewModels;
@@ -170,7 +168,7 @@ public class GameFileViewModel(GameFile asset) : ViewModel
         if (Asset.Extension is "umap")
         {
             AssetCategory = EAssetCategory.World;
-            AssetActions = EBulkType.Meshes | EBulkType.Textures | EBulkType.Audio | EBulkType.Code;
+            AssetActions = EBulkType.Worlds | EBulkType.Textures | EBulkType.Audio | EBulkType.Code;
             ResolvedAssetType = "World";
             Resolved |= EResolveCompute.Preview;
             return Task.CompletedTask;
@@ -215,8 +213,10 @@ public class GameFileViewModel(GameFile asset) : ViewModel
 
                 UStaticMesh => (EAssetCategory.StaticMesh, EBulkType.Meshes),
                 USkeletalMesh => (EAssetCategory.SkeletalMesh, EBulkType.Meshes),
+                UChaosClothAsset => (EAssetCategory.ChaosClothAsset, EBulkType.Meshes),
                 UCustomizableObject => (EAssetCategory.CustomizableObject, EBulkType.None),
                 UNaniteDisplacedMesh => (EAssetCategory.NaniteDisplacedMesh, EBulkType.None),
+                UGeometryCollection => (EAssetCategory.GeometryCollection, EBulkType.Meshes),
 
                 UTexture => (EAssetCategory.Texture, EBulkType.Textures),
 
@@ -265,6 +265,8 @@ public class GameFileViewModel(GameFile asset) : ViewModel
                 UGbxGraphAsset or UDialogScriptData or UDialogPerformanceData when GameVersion is EGame.GAME_Borderlands4 or EGame.GAME_Borderlands3 => (EAssetCategory.Borderlands, EBulkType.Audio), // Borderlands 4; Borderlands 3;
                 UFaceFXAnimSet when GameVersion is EGame.GAME_Borderlands4 => (EAssetCategory.Borderlands, EBulkType.Audio), // Borderlands 4;
                 UWubAudioEvent or UWubDialogueEvent when GameVersion is EGame.GAME_LEGOBatmanLegacyoftheDarkKnight => (EAssetCategory.LegoBatman, EBulkType.Audio), // Lego Batman: Legacy of the Dark Knight;
+                UREDBinaryObject => (EAssetCategory.ArcSys, EBulkType.None), // Arc System Works games;
+                UOrpheusBank or UOrpheusEvent => (EAssetCategory.GothamKnights, EBulkType.Audio), // Gotham Knights;
 
                 _ => (EAssetCategory.All, EBulkType.None),
             };
