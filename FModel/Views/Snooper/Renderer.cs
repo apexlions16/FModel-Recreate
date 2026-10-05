@@ -4,23 +4,28 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Windows;
-using CUE4Parse_Conversion.Animations;
-using CUE4Parse_Conversion.Meshes;
+using CUE4Parse.GameTypes.Nascar.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Animation;
 using CUE4Parse.UE4.Assets.Exports.Component.SplineMesh;
 using CUE4Parse.UE4.Assets.Exports.Component.StaticMesh;
+using CUE4Parse.UE4.Assets.Exports.Engine;
 using CUE4Parse.UE4.Assets.Exports.GeometryCollection;
+using CUE4Parse.UE4.Assets.Exports.Houdini;
 using CUE4Parse.UE4.Assets.Exports.Material;
-using CUE4Parse.UE4.Assets.Exports.Nanite;
-using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
+using CUE4Parse.GameTypes.Nascar.Assets.Exports;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.Utils;
+using CUE4Parse_Conversion.Animations;
+using CUE4Parse_Conversion.Dto;
+using CUE4Parse_Conversion.Meshes;
+using CUE4Parse_Conversion.Options;
+using CUE4Parse.UE4.Assets.Exports.Component;
 using FModel.Creator;
 using FModel.Settings;
 using FModel.Views.Snooper.Animations;
@@ -29,7 +34,7 @@ using FModel.Views.Snooper.Lights;
 using FModel.Views.Snooper.Models;
 using FModel.Views.Snooper.Shading;
 using OpenTK.Windowing.GraphicsLibraryFramework;
-using UModel = FModel.Views.Snooper.Models.UModel;
+using Serilog;
 
 namespace FModel.Views.Snooper;
 
@@ -89,8 +94,20 @@ public class Renderer : IDisposable
             case UStaticMesh when export.Value is UStaticMesh st:
                 LoadStaticMesh(st, UserSettings.Default.NaniteMeshExportFormat);
                 break;
-            case USkeletalMesh when export.Value is USkeletalMesh sk:
-                LoadSkeletalMesh(sk);
+            case UIRMesh when export.Value is UIRMesh irmc:
+                LoadIRMeshCollection(irmc);
+                break;
+            case UIRMeshComponent when export.Value is UIRMeshComponent meshcomp:
+                LoadIRMeshComponent(meshcomp);
+                break;
+            case UHoudiniStaticMesh when export.Value is UHoudiniStaticMesh hst:
+                LoadHoudiniStaticMesh(hst);
+                break;
+            case UGeometryCollection when export.Value is UGeometryCollection gc:
+                LoadStaticMesh(gc, UserSettings.Default.NaniteMeshExportFormat);
+                break;
+            case USkinnedAsset when export.Value is USkinnedAsset sa:
+                LoadSkinnedAsset(sa);
                 break;
             case USkeleton when export.Value is USkeleton skel:
                 LoadSkeleton(skel);
@@ -133,7 +150,7 @@ public class Renderer : IDisposable
                 {
                     // do nothing, selected model has the correct skeleton for this animation
                 }
-                else */if (animBase.Skeleton.TryLoad(out USkeleton skeleton))
+                else */if (animBase.Skeleton?.TryLoad(out USkeleton skeleton) == true)
                 {
                     LoadSkeleton(skeleton);
                 }
@@ -145,7 +162,7 @@ public class Renderer : IDisposable
     }
     private void Animate(UObject anim, FGuid guid)
     {
-        if (anim is not UAnimSequenceBase animBase || !animBase.Skeleton.TryLoad(out USkeleton skeleton) ||
+        if (anim is not UAnimSequenceBase animBase || animBase.Skeleton == null || !animBase.Skeleton.TryLoad(out USkeleton skeleton) ||
             !Options.TryGetModel(guid, out var m) || m is not SkeletalModel model)
             return;
 
@@ -161,9 +178,10 @@ public class Renderer : IDisposable
         model.Skeleton.Animate(animSet);
         Options.AddAnimation(animation);
 
-        foreach (var notifyEvent in animBase.Notifies)
+        foreach (var notifyEvent in animBase.Notifies ?? [])
         {
-            if (!notifyEvent.NotifyStateClass.TryLoad(out UObject notifyClass) ||
+            if (notifyEvent.NotifyStateClass is null ||
+                !notifyEvent.NotifyStateClass.TryLoad(out UObject notifyClass) ||
                 !notifyClass.TryGetValue(out UObject export, "SkeletalMeshProp", "StaticMeshProp", "Mesh", "SkeletalMeshTemplate"))
                 continue;
 
@@ -175,7 +193,7 @@ public class Renderer : IDisposable
                 t.Scale = offset.Scale3D;
             }
 
-            UModel addedModel = null;
+            IRenderableModel addedModel = null;
             switch (export)
             {
                 case UStaticMesh st:
@@ -185,19 +203,19 @@ public class Renderer : IDisposable
                     {
                         addedModel.AddInstance(t);
                     }
-                    else if (st.TryConvert(out var mesh))
+                    else if (st.TryConvert(out var mesh, EMeshQuality.Highest))
                     {
                         addedModel = new StaticModel(st, mesh, t);
                         Options.Models[guid] = addedModel;
                     }
                     break;
                 }
-                case USkeletalMesh sk:
+                case USkinnedAsset sa:
                 {
                     guid = Guid.NewGuid();
-                    if (!Options.Models.ContainsKey(guid) && sk.TryConvert(out var mesh))
+                    if (!Options.Models.ContainsKey(guid) && sa.TryConvert(out var mesh, EMeshQuality.Highest))
                     {
-                        addedModel = new SkeletalModel(sk, mesh, t);
+                        addedModel = new SkeletalModel(sa, mesh, t);
                         Options.Models[guid] = addedModel;
                     }
                     break;
@@ -344,7 +362,7 @@ public class Renderer : IDisposable
             wnd.WindowShouldClose(true, true);
     }
 
-    private void LoadStaticMesh(UStaticMesh original, ENaniteMeshFormat naniteFormat = ENaniteMeshFormat.OnlyNormalLODs)
+    private void LoadStaticMesh(UStaticMesh original, ENaniteMeshFormat naniteFormat = ENaniteMeshFormat.NoNanite)
     {
         var guid = original.LightingGuid;
         if (Options.TryGetModel(guid, out var model))
@@ -354,20 +372,119 @@ public class Renderer : IDisposable
             return;
         }
 
-        if (!original.TryConvert(out var mesh, naniteFormat))
+        if (!original.TryConvert(out var mesh, EMeshQuality.Highest, naniteFormat))
             return;
 
         Options.Models[guid] = new StaticModel(original, mesh);
         Options.SelectModel(guid);
     }
 
-    private void LoadSkeletalMesh(USkeletalMesh original)
+    private void LoadIRMeshCollection(UIRMesh original, FPackageIndex[]? materials = null)
+    {
+        var hash = (uint) original.GetFullName().GetHashCode();
+        var guid = new FGuid(hash);
+        if (Options.TryGetModel(guid, out var model))
+            return;
+
+        if (materials is not null && original.Info.MaterialCount == materials.Length)
+            original.SetMaterials(materials);
+        for (int i = 0; i < original.Info.PartCount; i++)
+        {
+            try
+            {
+                var mesh = new StaticMeshDto(original, i);
+                Options.Models[new FGuid(hash ^ (uint) i)] = new StaticModel(original, mesh, i) { IsVisible = true };
+                mesh.Dispose();
+            }
+            catch (Exception e)
+            {
+                Log.Error(e, "Failed to convert IR static mesh part {PartIndex}", i);
+            }
+        }
+
+        Options.SelectModel(guid);
+    }
+
+    private void LoadIRMeshComponent(UIRMeshComponent original)
+    {
+        if (original.Mesh is { IsNull: false } meshref && meshref.TryLoad(out UIRMesh mesh))
+        {
+            LoadIRMeshCollection(mesh, original.OverrideMaterials);
+        }
+    }
+
+    private void LoadHoudiniStaticMesh(UHoudiniStaticMesh original)
     {
         var guid = new FGuid((uint) original.GetFullName().GetHashCode());
-        if (Options.Models.ContainsKey(guid) || !original.TryConvert(out var mesh)) return;
+        if (Options.TryGetModel(guid, out var model))
+        {
+            model.AddInstance(Transform.Identity);
+            Application.Current.Dispatcher.Invoke(model.SetupInstances);
+            return;
+        }
 
-        var skeletalModel = new SkeletalModel(original, mesh);
-        Options.Models[guid] = skeletalModel;
+        StaticMeshDto mesh;
+        try
+        {
+            mesh = new StaticMeshDto(original);
+        }
+        catch (Exception e)
+        {
+            Log.Error(e, "Failed to convert houdini static mesh");
+            return;
+        }
+
+        Options.Models[guid] = new StaticModel(original, mesh);
+        Options.SelectModel(guid);
+    }
+
+    private void LoadStaticMesh(UGeometryCollection original, ENaniteMeshFormat naniteFormat = ENaniteMeshFormat.NoNanite)
+    {
+        var guid = new FGuid((uint) original.GetFullName().GetHashCode());
+        if (Options.TryGetModel(guid, out var model))
+        {
+            model.AddInstance(Transform.Identity);
+            Application.Current.Dispatcher.Invoke(model.SetupInstances);
+            return;
+        }
+
+        StaticMeshDto mesh;
+        try
+        {
+            mesh = new StaticMeshDto(original, naniteFormat);
+        }
+        catch (Exception e)
+        {
+            Log.Error(e, "Failed to convert geometry collection");
+            return;
+        }
+
+        Options.Models[guid] = new StaticModel(original, mesh);
+        Options.SelectModel(guid);
+    }
+
+    private void LoadSkinnedAsset(USkinnedAsset original, ENaniteMeshFormat naniteFormat = ENaniteMeshFormat.NoNanite)
+    {
+        var guid = new FGuid((uint) original.GetFullName().GetHashCode());
+        if (Options.TryGetModel(guid, out var model))
+        {
+            model.AddInstance(Transform.Identity);
+            Application.Current.Dispatcher.Invoke(model.SetupInstances);
+            return;
+        }
+
+        SkeletalMeshDto mesh;
+        try
+        {
+            mesh = new SkeletalMeshDto(original, EMeshQuality.Highest, naniteFormat);
+        }
+        catch (Exception e)
+        {
+            Log.Error(e, "Failed to convert skinned asset");
+            return;
+        }
+
+        Options.Models[guid] = new SkeletalModel(original, mesh);
         Options.SelectModel(guid);
     }
 
@@ -395,7 +512,7 @@ public class Renderer : IDisposable
             return;
         }
 
-        if (!editorCube.TryConvert(out var mesh))
+        if (!editorCube.TryConvert(out var mesh, EMeshQuality.Highest))
             return;
 
         Options.Models[guid] = new StaticModel(original, mesh);
@@ -411,11 +528,11 @@ public class Renderer : IDisposable
         if (Options.TryGetModel(guid, out var model))
         {
             model.AddInstance(Transform.Identity);
-            Application.Current.Dispatcher.Invoke(() => model.SetupInstances());
+            Application.Current.Dispatcher.Invoke(model.SetupInstances);
             return;
         }
 
-        Options.Models[guid] = new StaticModel(original, texture);
+        Options.Models[guid] = new StaticModel(original);
         Options.SelectModel(guid);
     }
 
@@ -536,26 +653,33 @@ public class Renderer : IDisposable
         {
             foreach (var component in instanceComponents)
             {
-                if (!component.TryLoad(out UStaticMeshComponent staticMeshComp) ||
-                    !staticMeshComp.GetStaticMesh().TryLoad(out UStaticMesh m) || m.Materials.Length < 1)
-                    continue;
+                if (!component.TryLoad(out UMeshComponent meshComponent)) continue;
 
-                var relation = CalculateTransform(staticMeshComp, transform);
-                if (staticMeshComp is UInstancedStaticMeshComponent { PerInstanceSMData.Length: > 0 } instancedStaticMeshComp)
+                if (meshComponent is UStaticMeshComponent staticMeshComp)
                 {
+                    if (!staticMeshComp.GetStaticMesh().TryLoad(out UStaticMesh m) || m.Materials.Length < 1)
+                        continue;
 
-                    foreach (var perInstanceData in instancedStaticMeshComp.PerInstanceSMData)
+                    var relation = CalculateTransform(staticMeshComp, transform);
+                    if (staticMeshComp is UInstancedStaticMeshComponent { PerInstanceSMData.Length: > 0 } instancedStaticMeshComp)
                     {
-                        ProcessMesh(actor, instancedStaticMeshComp, m, new Transform
+                        foreach (var perInstanceData in instancedStaticMeshComp.PerInstanceSMData)
                         {
-                            Relation = relation.Matrix,
-                            Position = perInstanceData.TransformData.Translation * Constants.SCALE_DOWN_RATIO,
-                            Rotation = perInstanceData.TransformData.Rotation,
-                            Scale = perInstanceData.TransformData.Scale3D
-                        });
+                            ProcessMesh(actor, instancedStaticMeshComp, m, new Transform
+                            {
+                                Relation = relation.Matrix,
+                                Position = perInstanceData.TransformData.Translation * Constants.SCALE_DOWN_RATIO,
+                                Rotation = perInstanceData.TransformData.Rotation,
+                                Scale = perInstanceData.TransformData.Scale3D
+                            });
+                        }
                     }
+                    else ProcessMesh(actor, staticMeshComp, m, relation);
                 }
-                else ProcessMesh(actor, staticMeshComp, m, relation);
+                else if (meshComponent is UIRMeshComponent irMeshComponent)
+                {
+                    LoadIRMeshComponent(irMeshComponent);
+                }
             }
         }
         else if (actor.TryGetValue(out FPackageIndex componentTemplate, "ComponentTemplate") &&
@@ -598,7 +722,7 @@ public class Renderer : IDisposable
             if (bSpline && model is SplineModel splineModel)
                 splineModel.AddComponent((USplineMeshComponent)staticMeshComp);
         }
-        else if (m.TryConvert(out var mesh, UserSettings.Default.NaniteMeshExportFormat))
+        else if (m.TryConvert(out var mesh, EMeshQuality.Highest, UserSettings.Default.NaniteMeshExportFormat))
         {
             model = bSpline ? new SplineModel(m, mesh, (USplineMeshComponent)staticMeshComp, transform) : new StaticModel(m, mesh, transform);
             model.IsTwoSided = actor.GetOrDefault("bMirrored", staticMeshComp.GetOrDefault("bDisallowMeshPaintPerInstance", model.IsTwoSided));
@@ -713,7 +837,7 @@ public class Renderer : IDisposable
                     continue;
 
                 var parameters = new CMaterialParams2();
-                unrealMaterial.GetParams(parameters, EMaterialFormat.FirstLayer);
+                unrealMaterial.GetParams(parameters, EMaterialDepth.TopLayerOnly);
 
                 if (!parameters.TryGetLinearColor(out var color, "Color"))
                     color = FLinearColor.Gray;
@@ -726,7 +850,7 @@ public class Renderer : IDisposable
             if (!material.TryLoad(out UMaterialInterface unrealMaterial)) continue;
 
             var parameters = new CMaterialParams2();
-            unrealMaterial.GetParams(parameters, EMaterialFormat.FirstLayer);
+            unrealMaterial.GetParams(parameters, EMaterialDepth.TopLayerOnly);
 
             if (!byte.TryParse(material.Name.SubstringAfterLast("_"), out var indexAsByte))
                 indexAsByte = byte.MaxValue;
@@ -759,8 +883,8 @@ public class Renderer : IDisposable
 
     private void WorldTextureData(Material material, UObject textureData, string name, string key)
     {
-        if (textureData.TryGetValue(out FPackageIndex package, name) && package.Load() is UTexture2D texture)
-            material.Parameters.Textures[key] = texture;
+        if (textureData.TryGetValue(out FPackageIndex package, name))
+            material.Parameters.Textures[key] = package;
     }
 
     private void AdditionalWorlds(UObject actor, Matrix4x4 relation, CancellationToken cancellationToken)
