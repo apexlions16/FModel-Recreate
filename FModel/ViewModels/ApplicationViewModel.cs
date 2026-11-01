@@ -23,6 +23,7 @@ using FModel.Views.Resources.Controls;
 using MessageBox = AdonisUI.Controls.MessageBox;
 using MessageBoxButton = AdonisUI.Controls.MessageBoxButton;
 using MessageBoxImage = AdonisUI.Controls.MessageBoxImage;
+using System.Runtime.Intrinsics.X86;
 
 namespace FModel.ViewModels;
 
@@ -59,6 +60,13 @@ public class ApplicationViewModel : ViewModel
 
             SetProperty(ref _isAssetsExplorerVisible, value);
         }
+    }
+
+    private bool _isUpdateAvailable;
+    public bool IsUpdateAvailable
+    {
+        get => _isUpdateAvailable;
+        internal set => SetProperty(ref _isUpdateAvailable, value);
     }
 
     private int _selectedLeftTabIndex;
@@ -138,7 +146,7 @@ public class ApplicationViewModel : ViewModel
     public DirectorySettings AvoidEmptyGameDirectory(bool bAlreadyLaunched)
     {
         var gameDirectory = UserSettings.Default.GameDirectory;
-        if (!bAlreadyLaunched && UserSettings.Default.PerDirectory.TryGetValue(gameDirectory, out var currentDir))
+        if (!bAlreadyLaunched && GameSelectorViewModel.IsGameDirectoryAvailable(gameDirectory) && UserSettings.Default.PerDirectory.TryGetValue(gameDirectory, out var currentDir))
             return currentDir;
 
         Status.SetStatus(EStatusKind.Configuring);
@@ -279,23 +287,11 @@ public class ApplicationViewModel : ViewModel
         }
     }
 
-    public static async Task InitImGuiSettings(bool forceDownload)
-    {
-        const string imgui = "imgui.ini";
-        var imguiPath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", imgui);
-
-        if (File.Exists(imgui)) File.Move(imgui, imguiPath, true);
-        if (File.Exists(imguiPath) && !forceDownload) return;
-
-        await ApplicationService.ApiEndpointView.DownloadFileAsync($"https://cdn.fmodel.app/d/configurations/{imgui}", imguiPath);
-        if (new FileInfo(imguiPath).Length == 0)
-        {
-            FLogger.Append(ELog.Error, () => FLogger.Text("Could not download ImGui settings", Constants.WHITE, true));
-        }
-    }
-
     public static async Task InitOodle()
     {
+        if (!Avx2.IsSupported)
+            return;
+
         var oodlePath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", OodleHelper.OODLE_NAME_OLD);
         if (!File.Exists(oodlePath))
         {

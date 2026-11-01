@@ -12,7 +12,7 @@ public class FileToGeometryConverter : IMultiValueConverter
 
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (values.Length < 2 || values[0] is not EAssetCategory category || values[1] is not string resolvedAssetType)
+        if (values.Length < 3 || values[0] is not EAssetCategory category || values[1] is not string resolvedAssetType || values[2] is not EAssetFamily family)
             return null;
 
         resolvedAssetType = resolvedAssetType.ToLowerInvariant();
@@ -32,8 +32,10 @@ public class FileToGeometryConverter : IMultiValueConverter
 
             EAssetCategory.StaticMesh => ("StaticMeshIconAlt", "NeutralBrush"),
             EAssetCategory.SkeletalMesh => ("SkeletalMeshIconAlt", "NeutralBrush"),
+            EAssetCategory.ChaosClothAsset => ("ChaosClothIcon", "ChaosClothBrush"),
             EAssetCategory.CustomizableObject => ("StaticMeshIconAlt", "CustomizableObjectBrush"),
             EAssetCategory.NaniteDisplacedMesh => ("StaticMeshIconAlt", "NaniteDisplacedMeshBrush"),
+            EAssetCategory.GeometryCollection => ("GeometryCollectionIcon", "NeutralBrush"),
 
             EAssetCategory.Material => ("MaterialIcon", "MaterialBrush"),
             EAssetCategory.MaterialEditorData => ("MaterialIcon", "MaterialEditorBrush"),
@@ -88,18 +90,43 @@ public class FileToGeometryConverter : IMultiValueConverter
                 "sql" => ("SQLIcon", "SQLBrush"),
                 "py" => ("PythonIcon", "PythonBrush"),
                 "cs" => ("CSharpIcon", "CSharpBrush"),
+                "swf" => ("FlashIcon", "FlashBrush"),
                 _ => ("DataTableIcon", "NeutralBrush")
             },
 
             EAssetCategory.ByteCode => ("CodeIcon", "CodeBrush"),
 
+            EAssetCategory.Flash => ("FlashIcon", "FlashBrush"),
+
+            // Game specific below
             EAssetCategory.Borderlands => ("BorderlandsIcon", "BorderlandsBrush"),
             EAssetCategory.Aion2 => ("AionIcon", "AionBrush"),
             EAssetCategory.RocoKingdomWorld => ("RocoKingdomWorldIcon", "RocoKingdomWorldBrush"),
             EAssetCategory.DeltaForce => ("DeltaForceIcon", "DeltaForceBrush"),
-            EAssetCategory.LegoBatman => ("BatmanIcon", "BatmanBrush"),
+            EAssetCategory.LegoBatman or EAssetCategory.GothamKnights => ("BatmanIcon", "BatmanBrush"),
+            EAssetCategory.ArcSys => ("ArcSysIcon", "ArcSysBrush"),
+            EAssetCategory.Nascar => ("NascarIcon", "NascarBrush"),
+            EAssetCategory.DeadByDaylight => ("DbdIcon", "DbdBrush"),
 
             _ => ("AssetIcon", "NeutralBrush")
+        };
+
+        (geometry, brush) = (family, category) switch
+        {
+            (EAssetFamily.Criware, EAssetCategory.Data) => ("CriwareIcon", "CriwareBrush"),
+            (EAssetFamily.Criware, _) => ("CriwareIcon", brush),
+
+            (EAssetFamily.Wwise, EAssetCategory.Data) => ("WwiseIcon", "WwiseBrush"),
+            (EAssetFamily.Wwise, _) => ("WwiseIcon", brush),
+
+            (EAssetFamily.FMod, EAssetCategory.Data) => ("FModIcon", "FModBrush"),
+            (EAssetFamily.FMod, _) => ("FModIcon", brush),
+
+            (EAssetFamily.Houdini, _) => ("HoudiniIcon", "HoudiniBrush"),
+
+            (EAssetFamily.Paper2D, not EAssetCategory.DeadByDaylight) => ("Paper2DIcon", brush),
+
+            _ => (geometry, brush),
         };
 
         if (targetType == typeof(Geometry))
