@@ -12,7 +12,7 @@ public class FileToGeometryConverter : IMultiValueConverter
 
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (values.Length < 2 || values[0] is not EAssetCategory category || values[1] is not string resolvedAssetType)
+        if (values is not [EAssetCategory category, string resolvedAssetType, EAssetFamily family, ValueTuple<string, string> iconStyle])
             return null;
 
         resolvedAssetType = resolvedAssetType.ToLowerInvariant();
@@ -28,12 +28,15 @@ public class FileToGeometryConverter : IMultiValueConverter
             EAssetCategory.UserDefinedStruct => ("BlueprintIcon", "UserDefinedStructBrush"),
             EAssetCategory.CookedMetaData => ("BlueprintIcon", "CookedMetaDataBrush"),
 
-            EAssetCategory.Texture => ("TextureIconAlt", "TextureBrush"),
+            EAssetCategory.Texture or EAssetCategory.AnimatedTexture => ("TextureIconAlt", "TextureBrush"),
 
             EAssetCategory.StaticMesh => ("StaticMeshIconAlt", "NeutralBrush"),
             EAssetCategory.SkeletalMesh => ("SkeletalMeshIconAlt", "NeutralBrush"),
+            EAssetCategory.ChaosClothAsset => ("ChaosClothIcon", "ChaosClothBrush"),
             EAssetCategory.CustomizableObject => ("StaticMeshIconAlt", "CustomizableObjectBrush"),
             EAssetCategory.NaniteDisplacedMesh => ("StaticMeshIconAlt", "NaniteDisplacedMeshBrush"),
+            EAssetCategory.GeometryCollection => ("GeometryCollectionIcon", "NeutralBrush"),
+            EAssetCategory.GroomAsset => ("GroomAssetIcon", "GroomAssetBrush"),
 
             EAssetCategory.Material => ("MaterialIcon", "MaterialBrush"),
             EAssetCategory.MaterialEditorData => ("MaterialIcon", "MaterialEditorBrush"),
@@ -88,24 +91,51 @@ public class FileToGeometryConverter : IMultiValueConverter
                 "sql" => ("SQLIcon", "SQLBrush"),
                 "py" => ("PythonIcon", "PythonBrush"),
                 "cs" => ("CSharpIcon", "CSharpBrush"),
+                "swf" => ("FlashIcon", "FlashBrush"),
                 _ => ("DataTableIcon", "NeutralBrush")
             },
 
             EAssetCategory.ByteCode => ("CodeIcon", "CodeBrush"),
 
+            EAssetCategory.Flash => ("FlashIcon", "FlashBrush"),
+
+            // Game specific below
             EAssetCategory.Borderlands => ("BorderlandsIcon", "BorderlandsBrush"),
             EAssetCategory.Aion2 => ("AionIcon", "AionBrush"),
             EAssetCategory.RocoKingdomWorld => ("RocoKingdomWorldIcon", "RocoKingdomWorldBrush"),
             EAssetCategory.DeltaForce => ("DeltaForceIcon", "DeltaForceBrush"),
-            EAssetCategory.LegoBatman => ("BatmanIcon", "BatmanBrush"),
+            EAssetCategory.LegoBatman or EAssetCategory.GothamKnights => ("BatmanIcon", "BatmanBrush"),
+            EAssetCategory.ArcSys => ("ArcSysIcon", "ArcSysBrush"),
+            EAssetCategory.Nascar => ("NascarIcon", "NascarBrush"),
+            EAssetCategory.DeadByDaylight => ("DbdIcon", "DbdBrush"),
 
             _ => ("AssetIcon", "NeutralBrush")
         };
 
+        (geometry, brush) = (family, category) switch
+        {
+            (EAssetFamily.Criware, EAssetCategory.Data) => ("CriwareIcon", "CriwareBrush"),
+            (EAssetFamily.Criware, _) => ("CriwareIcon", brush),
+
+            (EAssetFamily.Wwise, EAssetCategory.Data) => ("WwiseIcon", "WwiseBrush"),
+            (EAssetFamily.Wwise, _) => ("WwiseIcon", brush),
+
+            (EAssetFamily.FMod, EAssetCategory.Data) => ("FModIcon", "FModBrush"),
+            (EAssetFamily.FMod, _) => ("FModIcon", brush),
+
+            (EAssetFamily.Houdini, _) => ("HoudiniIcon", "HoudiniBrush"),
+
+            (EAssetFamily.Paper2D, not EAssetCategory.DeadByDaylight) => ("Paper2DIcon", brush),
+
+            _ => (geometry, brush),
+        };
+
+        var (geometryOverride, brushOverride) = iconStyle;
+
         if (targetType == typeof(Geometry))
-            return Application.Current.FindResource(geometry) as Geometry;
+            return Application.Current.FindResource(geometryOverride ?? geometry) as Geometry;
         if (targetType == typeof(Brush))
-            return Application.Current.FindResource(brush) as Brush;
+            return Application.Current.FindResource(brushOverride ?? brush) as Brush;
 
         return null;
     }

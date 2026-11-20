@@ -70,9 +70,11 @@ public class RightClickMenuCommand : ViewModelCommand<ApplicationViewModel>
             "Assets_Decompile" => (EAction.Show, EShowAssetType.Decompile, EBulkType.Code),
 
             "Save_Data" => (EAction.Export, EShowAssetType.None, EBulkType.Raw),
+            "Save_EmbeddedFiles" => (EAction.Export, EShowAssetType.None, EBulkType.EmbeddedFiles),
             "Save_Properties" => (EAction.Export, EShowAssetType.None, EBulkType.Properties),
             "Save_Textures" => (EAction.Export, EShowAssetType.None, EBulkType.Textures),
             "Save_Models" => (EAction.Export, EShowAssetType.None, EBulkType.Meshes),
+            "Save_Worlds" => (EAction.Export, EShowAssetType.None, EBulkType.Worlds),
             "Save_Animations" => (EAction.Export, EShowAssetType.None, EBulkType.Animations),
             "Save_Audio" => (EAction.Export, EShowAssetType.None, EBulkType.Audio),
             "Save_Code" => (EAction.Export, EShowAssetType.None, EBulkType.Code),
@@ -111,9 +113,11 @@ public class RightClickMenuCommand : ViewModelCommand<ApplicationViewModel>
             var (dirType, filetype) = bulktype switch
             {
                 EBulkType.Raw => (UserSettings.Default.RawDataDirectory, "files"),
+                EBulkType.EmbeddedFiles => (UserSettings.Default.RawDataDirectory, "embedded files"),
                 EBulkType.Properties => (UserSettings.Default.PropertiesDirectory, "json files"),
                 EBulkType.Textures => (UserSettings.Default.TextureDirectory, "textures"),
                 EBulkType.Meshes => (UserSettings.Default.ModelDirectory, "models"),
+                EBulkType.Worlds => (UserSettings.Default.ModelDirectory, "worlds"),
                 EBulkType.Animations => (UserSettings.Default.ModelDirectory, "animations"),
                 EBulkType.Audio => (UserSettings.Default.AudioDirectory, "audio files"),
                 EBulkType.Code => (UserSettings.Default.CodeDirectory, "code files"),
@@ -132,16 +136,17 @@ public class RightClickMenuCommand : ViewModelCommand<ApplicationViewModel>
             foreach (var folder in folders)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var queuedBefore = ExportSessionViewModel.Instance.Session.TotalQueued;
                 folderAction(folder);
 
                 var path = Path.Combine(dirType, UserSettings.Default.KeepDirectoryStructure ? folder.PathAtThisPoint : folder.PathAtThisPoint.SubstringAfterLast('/')).Replace('\\', '/');
-                LogExport(contextViewModel, folder.PathAtThisPoint, path, dirType, filetype);
+                LogExport(contextViewModel, folder.PathAtThisPoint, path, dirType, filetype, queuedBefore);
             }
 
-            Action<GameFile, EBulkType, bool> fileAction = bulktype switch
+            Action<GameFile, EBulkType> fileAction = bulktype switch
             {
-                EBulkType.Raw => (entry, _, update) => contextViewModel.CUE4Parse.ExportData(entry, !update),
-                _ => (entry, bulk, update) => contextViewModel.CUE4Parse.Extract(cancellationToken, entry, false, bulk),
+                EBulkType.Raw => (entry, _) => contextViewModel.CUE4Parse.ExportData(entry),
+                _ => (entry, bulk) => contextViewModel.CUE4Parse.Extract(cancellationToken, entry, false, bulk),
             };
 
             foreach (var group in assetsGroups)
@@ -150,30 +155,44 @@ public class RightClickMenuCommand : ViewModelCommand<ApplicationViewModel>
                 var list = group.ToArray();
                 var update = list.Length > 1;
                 var bulk = bulktype | (update ? EBulkType.Auto : EBulkType.None);
+                var queuedBefore = ExportSessionViewModel.Instance.Session.TotalQueued;
                 foreach (var entry in list)
                 {
                     Thread.Yield();
                     cancellationToken.ThrowIfCancellationRequested();
-                    fileAction(entry, bulk, update);
+                    fileAction(entry, bulk);
                 }
 
                 if (update)
                 {
                     var path = Path.Combine(dirType, UserSettings.Default.KeepDirectoryStructure ? directory : directory.SubstringAfterLast('/')).Replace('\\', '/');
-                    LogExport(contextViewModel, directory, path, dirType, filetype);
+                    LogExport(contextViewModel, directory, path, dirType, filetype, queuedBefore);
                 }
             }
         });
+
+        if (action is EAction.Export)
+        {
+            await ExportSessionViewModel.Instance.ExportAutomaticallyAsync();
+        }
     }
 
-    private void LogExport(ApplicationViewModel contextViewModel, string directory, string path, string basePath, string fileType)
+    private void LogExport(ApplicationViewModel contextViewModel, string directory, string path, string basePath, string fileType, int queuedBefore = 0)
     {
+        var queuedDelta = ExportSessionViewModel.Instance.Session.TotalQueued - queuedBefore;
         if (contextViewModel.CUE4Parse.ExportedCount > 0)
         {
             FLogger.Append(ELog.Information, () =>
             {
                 FLogger.Text($"Successfully exported {contextViewModel.CUE4Parse.ExportedCount} {fileType} from ", Constants.WHITE);
                 FLogger.Link(directory, Path.Exists(path) ? path : basePath, true);
+            });
+        }
+        else if (queuedDelta > 0)
+        {
+            FLogger.Append(ELog.Information, () =>
+            {
+                FLogger.Text($"Queued {queuedDelta} {fileType} for export from {directory}{(UserSettings.Default.ExportImmediately ? ", exporting automatically..." : "")}", Constants.WHITE, true);
             });
         }
         else if (contextViewModel.CUE4Parse.FailedExportCount == 0)
