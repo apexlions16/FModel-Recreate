@@ -14,9 +14,9 @@ using CSCore.CoreAudioAPI;
 using CSCore.DSP;
 using CSCore.SoundOut;
 using CSCore.Streams;
-using CUE4Parse.UE4.CriWare.Decoders;
-using CUE4Parse.UE4.CriWare.Decoders.ADX;
-using CUE4Parse.UE4.CriWare.Decoders.HCA;
+using CUE4Parse.UE4.Criware.Decoders;
+using CUE4Parse.UE4.Criware.Decoders.ADX;
+using CUE4Parse.UE4.Criware.Decoders.HCA;
 using CUE4Parse.Utils;
 using FModel.Extensions;
 using FModel.Framework;
@@ -239,6 +239,20 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
         });
     }
 
+    public void Unload()
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            _waveSource = null;
+
+            PlayedFile = new AudioFile(-1, "No audio file");
+            Spectrum = null;
+
+            RaiseSourceEvent(ESourceEventType.Clearing);
+            ClearSoundOut();
+        });
+    }
+
     public void AddToPlaylist(byte[] data, string filePath)
     {
         Application.Current.Dispatcher.Invoke(() =>
@@ -270,11 +284,30 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
         if (_audioFiles.Count < 1) return;
         Application.Current.Dispatcher.Invoke(() =>
         {
+            var removedPlaying = false;
+            if (PlayedFile.Id == SelectedAudioFile.Id)
+            {
+                removedPlaying = true;
+                Stop();
+            }
+
             _audioFiles.RemoveAt(SelectedAudioFile.Id);
             for (var i = 0; i < _audioFiles.Count; i++)
             {
                 _audioFiles[i].Id = i;
             }
+
+            if (_audioFiles.Count < 1)
+            {
+                Unload();
+                return;
+            }
+
+            SelectedAudioFile = SelectedAudioFile.Id >= _audioFiles.Count ? _audioFiles.Last() : _audioFiles[SelectedAudioFile.Id];
+
+            if (!removedPlaying) return;
+            Load();
+            Play();
         });
     }
 
@@ -526,6 +559,11 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
         _soundOut.Volume = UserSettings.Default.AudioPlayerVolume / 100;
     }
 
+    private void ClearSoundOut()
+    {
+        _soundOut = null;
+    }
+
     private IEnumerable<MMDevice> EnumerateDevices()
     {
         using var deviceEnumerator = new MMDeviceEnumerator();
@@ -672,7 +710,7 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
     private static bool TryConvertRada(string inputFilePath, byte[] inputFileData, string extension, out string rawFilePath, bool updateUi = false)
     {
         rawFilePath = string.Empty;
-        var decoderPath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", $"{extension}dec.exe");
+        var decoderPath = Path.Combine(UserSettings.Default.CacheDirectory, $"{extension}dec.exe");
         if (!File.Exists(decoderPath))
         {
             Log.Error("Failed to convert {FilePath}, {Extension} decoder is missing", inputFilePath, extension);
@@ -725,10 +763,10 @@ public class AudioPlayerViewModel : ViewModel, ISource, IDisposable
 
     private static string TryGetVgmstreamPath()
     {
-        var vgmFilePath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", "test.exe");
+        var vgmFilePath = Path.Combine(UserSettings.Default.CacheDirectory, "test.exe");
         if (!File.Exists(vgmFilePath))
         {
-            vgmFilePath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", "vgmstream-cli.exe");
+            vgmFilePath = Path.Combine(UserSettings.Default.CacheDirectory, "vgmstream-cli.exe");
             if (!File.Exists(vgmFilePath))
             {
                 Log.Error("Failed to convert audio, vgmstream is missing");

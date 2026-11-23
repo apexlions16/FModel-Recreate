@@ -23,6 +23,7 @@ using FModel.Views.Resources.Controls;
 using MessageBox = AdonisUI.Controls.MessageBox;
 using MessageBoxButton = AdonisUI.Controls.MessageBoxButton;
 using MessageBoxImage = AdonisUI.Controls.MessageBoxImage;
+using System.Runtime.Intrinsics.X86;
 
 namespace FModel.ViewModels;
 
@@ -59,6 +60,13 @@ public class ApplicationViewModel : ViewModel
 
             SetProperty(ref _isAssetsExplorerVisible, value);
         }
+    }
+
+    private bool _isUpdateAvailable;
+    public bool IsUpdateAvailable
+    {
+        get => _isUpdateAvailable;
+        internal set => SetProperty(ref _isUpdateAvailable, value);
     }
 
     private int _selectedLeftTabIndex;
@@ -138,7 +146,7 @@ public class ApplicationViewModel : ViewModel
     public DirectorySettings AvoidEmptyGameDirectory(bool bAlreadyLaunched)
     {
         var gameDirectory = UserSettings.Default.GameDirectory;
-        if (!bAlreadyLaunched && UserSettings.Default.PerDirectory.TryGetValue(gameDirectory, out var currentDir))
+        if (!bAlreadyLaunched && GameSelectorViewModel.IsGameDirectoryAvailable(gameDirectory) && UserSettings.Default.PerDirectory.TryGetValue(gameDirectory, out var currentDir))
             return currentDir;
 
         Status.SetStatus(EStatusKind.Configuring);
@@ -255,7 +263,7 @@ public class ApplicationViewModel : ViewModel
 
     public static async Task InitVgmStream()
     {
-        var vgmZipFilePath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", "vgmstream-win.zip");
+        var vgmZipFilePath = Path.Combine(UserSettings.Default.CacheDirectory, "vgmstream-win.zip");
         var vgmFileInfo = new FileInfo(vgmZipFilePath);
 
         if (!vgmFileInfo.Exists || vgmFileInfo.LastWriteTimeUtc < DateTime.UtcNow.AddMonths(-4))
@@ -279,27 +287,15 @@ public class ApplicationViewModel : ViewModel
         }
     }
 
-    public static async Task InitImGuiSettings(bool forceDownload)
-    {
-        const string imgui = "imgui.ini";
-        var imguiPath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", imgui);
-
-        if (File.Exists(imgui)) File.Move(imgui, imguiPath, true);
-        if (File.Exists(imguiPath) && !forceDownload) return;
-
-        await ApplicationService.ApiEndpointView.DownloadFileAsync($"https://cdn.fmodel.app/d/configurations/{imgui}", imguiPath);
-        if (new FileInfo(imguiPath).Length == 0)
-        {
-            FLogger.Append(ELog.Error, () => FLogger.Text("Could not download ImGui settings", Constants.WHITE, true));
-        }
-    }
-
     public static async Task InitOodle()
     {
-        var oodlePath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", OodleHelper.OODLE_NAME_OLD);
+        if (!Avx2.IsSupported)
+            return;
+
+        var oodlePath = Path.Combine(UserSettings.Default.CacheDirectory, OodleHelper.OODLE_NAME_OLD);
         if (!File.Exists(oodlePath))
         {
-            oodlePath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", OodleHelper.OODLE_NAME_CURRENT);
+            oodlePath = Path.Combine(UserSettings.Default.CacheDirectory, OodleHelper.OODLE_NAME_CURRENT);
         }
 
         await OodleHelper.InitializeAsync(oodlePath);
@@ -307,7 +303,7 @@ public class ApplicationViewModel : ViewModel
 
     public static async Task InitZlib()
     {
-        var zlibPath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", ZlibHelper.DLL_NAME);
+        var zlibPath = Path.Combine(UserSettings.Default.CacheDirectory, ZlibHelper.DLL_NAME);
         var zlibFileInfo = new FileInfo(zlibPath);
 
         if (!zlibFileInfo.Exists || zlibFileInfo.LastWriteTimeUtc < DateTime.UtcNow.AddMonths(-4))
@@ -322,24 +318,9 @@ public class ApplicationViewModel : ViewModel
         await ZlibHelper.InitializeAsync(zlibPath);
     }
 
-    public static async Task InitDetex()
-    {
-        var detexPath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", DetexHelper.DLL_NAME);
-        if (File.Exists(DetexHelper.DLL_NAME))
-        {
-            File.Move(DetexHelper.DLL_NAME, detexPath, true);
-        }
-        else if (!File.Exists(detexPath))
-        {
-            await DetexHelper.LoadDllAsync(detexPath);
-        }
-
-        DetexHelper.Initialize(detexPath);
-    }
-
     public static async Task InitUnluac()
     {
-        var unluacPath = Path.Combine(UserSettings.Default.OutputDirectory, ".data", UnluacHelper.DllName);
+        var unluacPath = Path.Combine(UserSettings.Default.CacheDirectory, UnluacHelper.DllName);
         await UnluacHelper.InitializeAsync(unluacPath).ConfigureAwait(false);
         if (UnluacHelper.Instance is null)
             FLogger.Append(ELog.Error, () => FLogger.Text("Failed to download unluac", Constants.WHITE, true));
